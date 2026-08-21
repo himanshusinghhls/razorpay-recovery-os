@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(frozen=True)
 class PolicyDecision:
     allowed: bool
     reason: str
@@ -9,6 +9,12 @@ class PolicyDecision:
 
 
 class RecoveryPolicyEngine:
+    """
+    Deterministic safety boundary for autonomous recovery actions.
+
+    The LLM/agent may propose an action, but it cannot override
+    this policy engine.
+    """
 
     MAX_RETRY_ATTEMPTS = 2
     HIGH_VALUE_THRESHOLD = 25_000
@@ -21,6 +27,29 @@ class RecoveryPolicyEngine:
         suspicious: bool,
     ) -> PolicyDecision:
 
+        # ---------------------------------------------------------
+        # 1. Validate financial amount
+        # ---------------------------------------------------------
+        if amount <= 0:
+            return PolicyDecision(
+                allowed=False,
+                reason="Transaction amount must be greater than zero",
+                requires_human_approval=False,
+            )
+
+        # ---------------------------------------------------------
+        # 2. Validate retry count
+        # ---------------------------------------------------------
+        if retry_count < 0:
+            return PolicyDecision(
+                allowed=False,
+                reason="Retry count cannot be negative",
+                requires_human_approval=False,
+            )
+
+        # ---------------------------------------------------------
+        # 3. Enforce retry limit
+        # ---------------------------------------------------------
         if retry_count >= self.MAX_RETRY_ATTEMPTS:
             return PolicyDecision(
                 allowed=False,
@@ -28,6 +57,9 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
+        # ---------------------------------------------------------
+        # 4. Suspicious transactions require human review
+        # ---------------------------------------------------------
         if suspicious:
             return PolicyDecision(
                 allowed=False,
@@ -35,6 +67,9 @@ class RecoveryPolicyEngine:
                 requires_human_approval=True,
             )
 
+        # ---------------------------------------------------------
+        # 5. High-value transactions require merchant approval
+        # ---------------------------------------------------------
         if amount >= self.HIGH_VALUE_THRESHOLD:
             return PolicyDecision(
                 allowed=False,
@@ -42,6 +77,9 @@ class RecoveryPolicyEngine:
                 requires_human_approval=True,
             )
 
+        # ---------------------------------------------------------
+        # 6. Otherwise the action is allowed
+        # ---------------------------------------------------------
         return PolicyDecision(
             allowed=True,
             reason="Action satisfies recovery policy",

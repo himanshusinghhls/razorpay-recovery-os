@@ -1,39 +1,65 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes.razorpay import router as razorpay_router
+from .config import settings
+from .core.lifespan import lifespan
+from .routes.payments import router as payments_router
+from .routes.razorpay import router as razorpay_router
+from .routes.webhooks import router as webhook_router
 
 
 app = FastAPI(
     title="Razorpay RecoveryOS API",
-    version="0.1.0",
+    version="1.0.0",
     description="AI-powered revenue recovery infrastructure",
+    lifespan=lifespan,
 )
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
-app.include_router(razorpay_router)
+app.include_router(
+    razorpay_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    webhook_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    payments_router,
+    prefix="/api/v1",
+)
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health():
     return {
         "status": "ok",
-        "service": "recovery-os-api",
+        "service": settings.app_name,
     }
 
 
-@app.get("/")
+@app.get("/ready", tags=["System"])
+async def readiness():
+    return {
+        "status": "ready",
+        "service": settings.app_name,
+    }
+
+
+@app.get("/", tags=["System"])
 async def root():
     return {
         "name": "Razorpay RecoveryOS",
-        "version": "0.1.0",
+        "version": "1.0.0",
     }

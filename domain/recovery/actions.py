@@ -31,11 +31,11 @@ class RecoveryAction:
     action_type: RecoveryActionType
     payment_id: Optional[str]
     customer_id: Optional[str]
-    amount: int
+    amount: Optional[int]
     reason: str
 
     def __post_init__(self) -> None:
-        if self.amount <= 0:
+        if self.amount is not None and self.amount <= 0:
             raise ValueError("Recovery action amount must be greater than zero")
 
         if not self.reason.strip():

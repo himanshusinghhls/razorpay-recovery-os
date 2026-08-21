@@ -1,3 +1,5 @@
+import pytest
+
 from domain.policy.engine import RecoveryPolicyEngine
 from domain.policy.models import PolicyContext
 from domain.recovery.actions import RecoveryActionType
@@ -60,22 +62,30 @@ def test_high_value_transaction_requires_human():
     assert decision.requires_human_approval is True
 
 
-def test_invalid_amount_is_blocked():
-    engine = RecoveryPolicyEngine()
-
-    decision = engine.evaluate(
+def test_invalid_amount_is_rejected_by_context():
+    with pytest.raises(
+        ValueError,
+        match="greater than zero",
+    ):
         make_context(amount=0)
-    )
-
-    assert decision.allowed is False
 
 
-def test_negative_retry_count_is_blocked():
-    engine = RecoveryPolicyEngine()
-
-    decision = engine.evaluate(
+def test_negative_retry_count_is_rejected_by_context():
+    with pytest.raises(
+        ValueError,
+        match="cannot be negative",
+    ):
         make_context(retry_count=-1)
-    )
 
-    assert decision.allowed is False
-    assert "negative" in decision.reason.lower()
+
+def test_invalid_action_type_is_rejected():
+    with pytest.raises(
+        TypeError,
+        match="RecoveryActionType",
+    ):
+        PolicyContext(
+            action_type="retry_payment",
+            amount=4999,
+            retry_count=0,
+            suspicious=False,
+        )

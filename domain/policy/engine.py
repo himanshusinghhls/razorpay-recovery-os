@@ -1,8 +1,16 @@
 from dataclasses import dataclass
 
+from domain.policy.models import PolicyContext
+
 
 @dataclass(frozen=True)
 class PolicyDecision:
+    """
+    Immutable result of a policy evaluation.
+
+    The policy engine is a deterministic safety boundary.
+    """
+
     allowed: bool
     reason: str
     requires_human_approval: bool
@@ -18,19 +26,17 @@ class RecoveryPolicyEngine:
 
     MAX_RETRY_ATTEMPTS = 2
     HIGH_VALUE_THRESHOLD = 25_000
-    MAX_RECOVERY_WINDOW_DAYS = 7
 
     def evaluate(
         self,
-        amount: int,
-        retry_count: int,
-        suspicious: bool,
+        context: PolicyContext,
     ) -> PolicyDecision:
 
         # ---------------------------------------------------------
         # 1. Validate financial amount
         # ---------------------------------------------------------
-        if amount <= 0:
+
+        if context.amount <= 0:
             return PolicyDecision(
                 allowed=False,
                 reason="Transaction amount must be greater than zero",
@@ -40,7 +46,8 @@ class RecoveryPolicyEngine:
         # ---------------------------------------------------------
         # 2. Validate retry count
         # ---------------------------------------------------------
-        if retry_count < 0:
+
+        if context.retry_count < 0:
             return PolicyDecision(
                 allowed=False,
                 reason="Retry count cannot be negative",
@@ -50,7 +57,8 @@ class RecoveryPolicyEngine:
         # ---------------------------------------------------------
         # 3. Enforce retry limit
         # ---------------------------------------------------------
-        if retry_count >= self.MAX_RETRY_ATTEMPTS:
+
+        if context.retry_count >= self.MAX_RETRY_ATTEMPTS:
             return PolicyDecision(
                 allowed=False,
                 reason="Maximum retry attempts exceeded",
@@ -60,7 +68,8 @@ class RecoveryPolicyEngine:
         # ---------------------------------------------------------
         # 4. Suspicious transactions require human review
         # ---------------------------------------------------------
-        if suspicious:
+
+        if context.suspicious:
             return PolicyDecision(
                 allowed=False,
                 reason="Suspicious activity requires manual review",
@@ -70,7 +79,8 @@ class RecoveryPolicyEngine:
         # ---------------------------------------------------------
         # 5. High-value transactions require merchant approval
         # ---------------------------------------------------------
-        if amount >= self.HIGH_VALUE_THRESHOLD:
+
+        if context.amount >= self.HIGH_VALUE_THRESHOLD:
             return PolicyDecision(
                 allowed=False,
                 reason="High-value transaction requires merchant approval",
@@ -80,6 +90,7 @@ class RecoveryPolicyEngine:
         # ---------------------------------------------------------
         # 6. Otherwise the action is allowed
         # ---------------------------------------------------------
+
         return PolicyDecision(
             allowed=True,
             reason="Action satisfies recovery policy",

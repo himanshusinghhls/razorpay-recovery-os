@@ -1,20 +1,21 @@
+from application.execution.authorization import ExecutionAuthorization
 from application.execution.executor import RecoveryExecutor
 from application.execution.result import ExecutionResult
-from domain.recovery.actions import RecoveryAction
 
 
 class DryRunRecoveryExecutor(RecoveryExecutor):
     """
-    Non-destructive executor used for development and testing.
+    Safe executor used for development and testing.
 
-    It records what would have happened without calling any
-    external payment provider.
+    It never calls an external payment provider.
     """
 
     async def execute(
         self,
-        action: RecoveryAction,
+        authorization: ExecutionAuthorization,
     ) -> ExecutionResult:
+
+        action = authorization.action
 
         return ExecutionResult(
             success=True,

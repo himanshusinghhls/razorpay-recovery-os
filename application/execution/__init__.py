@@ -29,6 +29,7 @@ __all__ = [
     "ExecutionResult",
     "FailingRecoveryExecutor",
     "ProviderExecutionOutcome",
+    "PostgresExecutionRepository",
     "RecoveryExecutionOrchestrator",
     "RecoveryExecutor",
     "RazorpayRecoveryExecutor",

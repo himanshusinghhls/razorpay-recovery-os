@@ -1,28 +1,25 @@
 import json
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from integrations.razorpay.verification import (
-    RazorpaySignatureVerifier,
-)
-
+from ..db.session import get_db_session
+from application.webhooks.processor import WebhookProcessor
+from application.webhooks.repository import PostgresWebhookEventRepository
+from integrations.razorpay.verification import RazorpaySignatureVerifier
 
 router = APIRouter(
     prefix="/webhooks",
     tags=["Webhooks"],
 )
 
-
 @router.post("/razorpay")
 async def razorpay_webhook(
     request: Request,
-    x_razorpay_signature: str | None = Header(
-        default=None,
-    ),
-    x_razorpay_event_id: str | None = Header(
-        default=None,
-    ),
+    x_razorpay_signature: str | None = Header(default=None),
+    x_razorpay_event_id: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_db_session),
 ):
     if not x_razorpay_signature:
         raise HTTPException(
@@ -61,10 +58,17 @@ async def razorpay_webhook(
             detail="Invalid JSON payload",
         )
 
-    event = payload.get("event")
+    # Initialize persistence and process idempotently
+    repo = PostgresWebhookEventRepository(session)
+    processor = WebhookProcessor(repository=repo)
+
+    processed = await processor.process_razorpay_event(
+        event_id=x_razorpay_event_id,
+        payload=payload,
+    )
 
     return {
         "accepted": True,
         "event_id": x_razorpay_event_id,
-        "event": event,
+        "duplicate": not processed,
     }

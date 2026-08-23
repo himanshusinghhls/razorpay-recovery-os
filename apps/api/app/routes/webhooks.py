@@ -7,6 +7,8 @@ from ..config import settings
 from ..db.session import get_db_session
 from application.webhooks.processor import WebhookProcessor
 from application.webhooks.repository import PostgresWebhookEventRepository
+from application.webhooks.reconciler import RecoveryReconciliationService
+from application.execution.postgres_repository import PostgresExecutionRepository
 from integrations.razorpay.verification import RazorpaySignatureVerifier
 
 router = APIRouter(
@@ -21,54 +23,29 @@ async def razorpay_webhook(
     x_razorpay_event_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_db_session),
 ):
-    if not x_razorpay_signature:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing Razorpay signature",
-        )
-
-    if not x_razorpay_event_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing Razorpay event ID",
-        )
+    if not x_razorpay_signature or not x_razorpay_event_id:
+        raise HTTPException(status_code=400, detail="Missing Razorpay headers")
 
     raw_body = await request.body()
+    verifier = RazorpaySignatureVerifier(settings.razorpay_webhook_secret)
 
-    verifier = RazorpaySignatureVerifier(
-        settings.razorpay_webhook_secret,
-    )
-
-    valid = verifier.verify_webhook_signature(
-        raw_body=raw_body,
-        signature=x_razorpay_signature,
-    )
-
-    if not valid:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid Razorpay webhook signature",
-        )
+    if not verifier.verify_webhook_signature(raw_body=raw_body, signature=x_razorpay_signature):
+        raise HTTPException(status_code=401, detail="Invalid Razorpay webhook signature")
 
     try:
         payload = json.loads(raw_body)
     except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid JSON payload",
-        )
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    # Initialize persistence and process idempotently
-    repo = PostgresWebhookEventRepository(session)
-    processor = WebhookProcessor(repository=repo)
+    # Dependency Injection
+    webhook_repo = PostgresWebhookEventRepository(session)
+    execution_repo = PostgresExecutionRepository(session)
+    reconciler = RecoveryReconciliationService(execution_repo)
+    processor = WebhookProcessor(repository=webhook_repo, reconciler=reconciler)
 
     processed = await processor.process_razorpay_event(
         event_id=x_razorpay_event_id,
         payload=payload,
     )
 
-    return {
-        "accepted": True,
-        "event_id": x_razorpay_event_id,
-        "duplicate": not processed,
-    }
+    return {"accepted": True, "event_id": x_razorpay_event_id, "duplicate": not processed}

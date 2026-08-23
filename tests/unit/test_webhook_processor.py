@@ -1,29 +1,52 @@
 import pytest
-from application.webhooks import InMemoryWebhookEventRepository, WebhookProcessor
+from application.webhooks import InMemoryWebhookEventRepository, WebhookProcessor, RecoveryReconciliationService
+from application.execution.in_memory_repository import InMemoryExecutionRepository
+from domain.execution.models import RecoveryExecution, ExecutionStatus
+
+@pytest.fixture
+def repos():
+    return InMemoryWebhookEventRepository(), InMemoryExecutionRepository()
 
 @pytest.mark.asyncio
-async def test_processor_saves_new_event():
-    repo = InMemoryWebhookEventRepository()
-    processor = WebhookProcessor(repo)
+async def test_processor_saves_event_and_reconciles(repos):
+    webhook_repo, exec_repo = repos
+    
+    # Pre-seed an execution
+    exec_record = RecoveryExecution(
+        execution_id="exec_123",
+        payment_id="pay_failed",
+        action_type="retry_payment",
+        status=ExecutionStatus.STARTED,
+        external_reference="order_success",
+        message="Started"
+    )
+    await exec_repo.create(exec_record)
 
-    payload = {"event": "payment.captured", "payload": {"payment": {"entity": {"id": "pay_123"}}}}
+    reconciler = RecoveryReconciliationService(exec_repo)
+    processor = WebhookProcessor(webhook_repo, reconciler)
+
+    payload = {
+        "event": "payment.captured", 
+        "payload": {"payment": {"entity": {"order_id": "order_success"}}}
+    }
     
     processed = await processor.process_razorpay_event("ev_123", payload)
     
     assert processed is True
-    assert await repo.exists("ev_123", "razorpay") is True
+    
+    # Verify execution was updated
+    updated_exec = await exec_repo.get("exec_123")
+    assert updated_exec.status == ExecutionStatus.SUCCEEDED
 
 @pytest.mark.asyncio
-async def test_processor_ignores_duplicate_event():
-    repo = InMemoryWebhookEventRepository()
-    processor = WebhookProcessor(repo)
+async def test_processor_ignores_duplicate_event(repos):
+    webhook_repo, exec_repo = repos
+    reconciler = RecoveryReconciliationService(exec_repo)
+    processor = WebhookProcessor(webhook_repo, reconciler)
 
     payload = {"event": "payment.captured"}
     
-    # First attempt
     await processor.process_razorpay_event("ev_123", payload)
-    
-    # Second attempt (duplicate webhook delivery)
     processed_again = await processor.process_razorpay_event("ev_123", payload)
     
     assert processed_again is False

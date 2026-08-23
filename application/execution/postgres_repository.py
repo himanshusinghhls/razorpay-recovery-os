@@ -6,19 +6,10 @@ from apps.api.app.db.models import ExecutionRecord
 from domain.execution.models import RecoveryExecution
 
 class PostgresExecutionRepository(ExecutionRepository):
-    """
-    Production PostgreSQL persistence for recovery executions.
-    """
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create(
-        self,
-        execution: RecoveryExecution,
-    ) -> None:
-        
-        # Enforce application-level uniqueness constraint
+    async def create(self, execution: RecoveryExecution) -> None:
         existing = await self.get(execution.execution_id)
         if existing:
             raise ValueError("Execution already exists")
@@ -34,11 +25,7 @@ class PostgresExecutionRepository(ExecutionRepository):
         self.session.add(record)
         await self.session.commit()
 
-    async def update(
-        self,
-        execution: RecoveryExecution,
-    ) -> None:
-        
+    async def update(self, execution: RecoveryExecution) -> None:
         stmt = select(ExecutionRecord).where(
             ExecutionRecord.execution_id == execution.execution_id
         )
@@ -54,11 +41,7 @@ class PostgresExecutionRepository(ExecutionRepository):
 
         await self.session.commit()
 
-    async def get(
-        self,
-        execution_id: str,
-    ) -> RecoveryExecution | None:
-        
+    async def get(self, execution_id: str) -> RecoveryExecution | None:
         stmt = select(ExecutionRecord).where(
             ExecutionRecord.execution_id == execution_id
         )
@@ -68,6 +51,22 @@ class PostgresExecutionRepository(ExecutionRepository):
         if not record:
             return None
 
+        return self._to_domain(record)
+
+    async def get_by_external_reference(self, reference: str) -> RecoveryExecution | None:
+        stmt = select(ExecutionRecord).where(
+            ExecutionRecord.external_reference == reference
+        )
+        result = await self.session.execute(stmt)
+        record = result.scalar_one_or_none()
+
+        if not record:
+            return None
+
+        return self._to_domain(record)
+
+    @staticmethod
+    def _to_domain(record: ExecutionRecord) -> RecoveryExecution:
         return RecoveryExecution(
             execution_id=record.execution_id,
             payment_id=record.payment_id,

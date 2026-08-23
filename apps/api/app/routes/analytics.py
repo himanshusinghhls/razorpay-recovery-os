@@ -28,7 +28,7 @@ async def get_analytics_summary(
     Real-time analytics summary powered by actual PostgreSQL data.
 
     Returns live metrics about recovery performance, policy blocks,
-    and pending reviews.
+    pending reviews, and actual monetary amounts recovered.
     """
     total_stmt = select(func.count()).select_from(ExecutionRecord)
     total_result = await session.execute(total_stmt)
@@ -65,6 +65,27 @@ async def get_analytics_summary(
         else 0.0
     )
 
+    recent_stmt = (
+        select(ExecutionRecord)
+        .order_by(ExecutionRecord.created_at.desc())
+        .limit(20)
+    )
+    recent_result = await session.execute(recent_stmt)
+    recent_records = recent_result.scalars().all()
+
+    recent_transactions = [
+        {
+            "execution_id": r.execution_id,
+            "payment_id": r.payment_id,
+            "action_type": r.action_type,
+            "status": r.status.value,
+            "message": r.message,
+            "external_reference": r.external_reference,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in recent_records
+    ]
+
     return {
         "total_executions": total_executions,
         "successful_recoveries": successful,
@@ -73,6 +94,7 @@ async def get_analytics_summary(
         "pending_reviews": pending_reviews,
         "total_audit_entries": total_audit_entries,
         "unsafe_action_rate": 0.0,
+        "recent_transactions": recent_transactions,
     }
 
 

@@ -1,18 +1,44 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Activity, ShieldAlert, CheckCircle, RefreshCw,
-  ArrowUpRight, Zap, Play, TerminalSquare, BarChart3, Database,
-  Shield, Clock, Eye, XCircle, CheckCircle2, AlertTriangle
+  Activity, ShieldAlert, CheckCircle, RefreshCw, ArrowUpRight,
+  Zap, Play, BarChart3, Database, Shield, Clock, Eye, XCircle,
+  CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
+  ArrowRight, CreditCard, TrendingUp, Search
 } from "lucide-react";
 
 const API_BASE = "http://127.0.0.1:8000/api/v1";
 
+type PipelineStage = "idle" | "detect" | "diagnose" | "policy" | "execute" | "result";
+type PipelineResult = "success" | "escalated" | "blocked" | "error" | null;
+
+interface Transaction {
+  execution_id: string;
+  payment_id: string;
+  action_type: string;
+  status: string;
+  message: string;
+  external_reference: string | null;
+  created_at: string | null;
+}
+
+const STAGES = [
+  { key: "detect", label: "Detect", icon: AlertTriangle, desc: "Payment failure detected" },
+  { key: "diagnose", label: "AI Diagnose", icon: Activity, desc: "Gemini 2.5 Flash analyzing" },
+  { key: "policy", label: "Policy Gate", icon: Shield, desc: "Safety boundary check" },
+  { key: "execute", label: "Execute", icon: Play, desc: "Razorpay API call" },
+  { key: "result", label: "Result", icon: CheckCircle, desc: "Recovery outcome" },
+] as const;
+
 export default function RecoveryOSDashboard() {
   const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit">("live");
-  const [logs, setLogs] = useState<{ id: string; text: string; type: string }[]>([]);
+
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
+  const [pipelineResult, setPipelineResult] = useState<PipelineResult>(null);
+  const [pipelineData, setPipelineData] = useState<Record<string, any>>({});
   const [isRecovering, setIsRecovering] = useState(false);
 
   const [customAmountRupees, setCustomAmountRupees] = useState<number>(150);
@@ -22,6 +48,9 @@ export default function RecoveryOSDashboard() {
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
 
   const [analytics, setAnalytics] = useState<any>(null);
+  const [recentTxns, setRecentTxns] = useState<Transaction[]>([]);
+  const [expandedTxn, setExpandedTxn] = useState<string | null>(null);
+  const [txnAudit, setTxnAudit] = useState<Record<string, any>>({});
 
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -30,61 +59,121 @@ export default function RecoveryOSDashboard() {
   const [auditTrail, setAuditTrail] = useState<any>(null);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const addLog = (text: string, type: "info" | "success" | "warning" | "error") => {
-    setLogs((prev) => [{ id: `${Date.now()}-${Math.random()}`, text, type }, ...prev]);
-  };
-
   const fetchAnalytics = useCallback(async () => {
     try {
       const response = await axios.get(`${API_BASE}/analytics/summary`);
       setAnalytics(response.data);
-    } catch (err) {
-
-    }
+      if (response.data.recent_transactions) {
+        setRecentTxns(response.data.recent_transactions);
+      }
+    } catch (err) { }
   }, []);
 
   useEffect(() => {
     fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 10000);
+    const interval = setInterval(fetchAnalytics, 8000);
     return () => clearInterval(interval);
   }, [fetchAnalytics]);
 
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
   const simulateFailure = async (amountRupees: number, reason: string) => {
     setIsRecovering(true);
+    setPipelineResult(null);
+    setPipelineData({});
+
     const amountPaise = amountRupees * 100;
     const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
 
-    addLog(`[DETECT] ⚡ Failure Detected: ${paymentId} | ₹${amountRupees.toLocaleString()} | ${reason}`, "warning");
+    setPipelineStage("detect");
+    setPipelineData({ payment_id: paymentId, amount: `₹${amountRupees.toLocaleString()}`, reason });
+    await delay(600);
+
+    setPipelineStage("diagnose");
+    setPipelineData(prev => ({ ...prev, stage_info: "AI agent evaluating recovery probability..." }));
 
     try {
-      addLog(`[AGENT] 🧠 AI Analyst evaluating recovery probability...`, "info");
-
       const response = await axios.post(`${API_BASE}/recoveries/execute`, {
         payment_id: paymentId,
-        customer_id: "cust_demo_888",
+        customer_id: `cust_demo_${Math.random().toString(36).substring(2, 6)}`,
         amount: amountPaise,
         failure_reason: reason,
       });
-
       const data = response.data;
 
+      setPipelineStage("policy");
+      setPipelineData(prev => ({ ...prev, action: data.action_type, stage_info: "Checking safety rules..." }));
+      await delay(500);
+
       if (data.status === "escalated") {
-        addLog(`[ESCALATE] 🔶 Escalated to human review: ${data.message}`, "warning");
-        addLog(`[REVIEW] Review ID: ${data.provider_reference}`, "info");
-      } else if (data.status === "failed" && data.message.includes("Policy Blocked")) {
-        addLog(`[POLICY] 🛑 Blocked: ${data.message}`, "error");
+        setPipelineStage("result");
+        setPipelineResult("escalated");
+        setPipelineData(prev => ({
+          ...prev,
+          result_status: "ESCALATED",
+          message: data.message,
+          review_id: data.provider_reference,
+          stage_info: "Requires human approval",
+        }));
       } else if (data.status === "failed") {
-        addLog(`[STOP] ⏹ Stopping rule triggered: ${data.message}`, "error");
+        setPipelineStage("result");
+        setPipelineResult("blocked");
+        setPipelineData(prev => ({
+          ...prev,
+          result_status: "BLOCKED",
+          message: data.message,
+          stage_info: "Policy engine denied",
+        }));
       } else {
-        addLog(`[AGENT] ✅ Diagnosis Complete. Action: ${data.action_type}`, "success");
-        addLog(`[EXEC] 🔗 Razorpay Order Created: ${data.provider_reference} (${data.execution_id.slice(0, 16)}...)`, "success");
+        setPipelineStage("execute");
+        setPipelineData(prev => ({ ...prev, stage_info: "Creating Razorpay retry order..." }));
+        await delay(400);
+
+        setPipelineStage("result");
+        setPipelineResult("success");
+        setPipelineData(prev => ({
+          ...prev,
+          result_status: "RECOVERED",
+          execution_id: data.execution_id,
+          provider_ref: data.provider_reference,
+          message: data.message,
+          stage_info: "Recovery order created",
+        }));
       }
 
       fetchAnalytics();
     } catch (error: any) {
-      addLog(`[ERROR] System Error: ${error.response?.data?.detail || error.message}`, "error");
+      setPipelineStage("result");
+      setPipelineResult("error");
+      setPipelineData(prev => ({
+        ...prev,
+        result_status: "ERROR",
+        message: error.response?.data?.detail || error.message,
+        stage_info: "System error",
+      }));
     } finally {
       setIsRecovering(false);
+    }
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    simulateFailure(customAmountRupees, customReason);
+  };
+
+  const toggleTxnAudit = async (paymentId: string) => {
+    if (expandedTxn === paymentId) {
+      setExpandedTxn(null);
+      return;
+    }
+    setExpandedTxn(paymentId);
+    if (!txnAudit[paymentId]) {
+      try {
+        const response = await axios.get(`${API_BASE}/audit/${paymentId}`);
+        setTxnAudit(prev => ({ ...prev, [paymentId]: response.data }));
+      } catch {
+        setTxnAudit(prev => ({ ...prev, [paymentId]: { error: "No audit trail found" } }));
+      }
     }
   };
 
@@ -115,7 +204,6 @@ export default function RecoveryOSDashboard() {
   const handleApprove = async (reviewId: string) => {
     try {
       await axios.post(`${API_BASE}/reviews/${reviewId}/approve`);
-      addLog(`[REVIEW] ✅ Review ${reviewId.slice(0, 16)}... APPROVED`, "success");
       fetchReviews();
       fetchAnalytics();
     } catch (error) {
@@ -126,7 +214,6 @@ export default function RecoveryOSDashboard() {
   const handleReject = async (reviewId: string) => {
     try {
       await axios.post(`${API_BASE}/reviews/${reviewId}/reject`);
-      addLog(`[REVIEW] ❌ Review ${reviewId.slice(0, 16)}... REJECTED`, "warning");
       fetchReviews();
     } catch (error) {
       console.error("Reject failed", error);
@@ -146,125 +233,228 @@ export default function RecoveryOSDashboard() {
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    simulateFailure(customAmountRupees, customReason);
+  const getStageState = (stageKey: string) => {
+    const stageOrder = ["detect", "diagnose", "policy", "execute", "result"];
+    const currentIdx = stageOrder.indexOf(pipelineStage);
+    const thisIdx = stageOrder.indexOf(stageKey);
+
+    if (pipelineStage === "idle") return "idle";
+    if (thisIdx < currentIdx) return "complete";
+    if (thisIdx === currentIdx) return "active";
+    return "pending";
+  };
+
+  const stageColors: Record<string, string> = {
+    idle: "border-gray-700 bg-gray-900/50 text-gray-600",
+    pending: "border-gray-700 bg-gray-900/50 text-gray-600",
+    active: "border-blue-500 bg-blue-950/40 text-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.25)]",
+    complete: "border-green-600/60 bg-green-950/30 text-green-400",
+  };
+
+  const resultColors: Record<string, string> = {
+    success: "border-green-500 bg-green-950/40 text-green-400 shadow-[0_0_30px_rgba(34,197,94,0.25)]",
+    escalated: "border-amber-500 bg-amber-950/40 text-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.25)]",
+    blocked: "border-red-500 bg-red-950/40 text-red-400 shadow-[0_0_30px_rgba(239,68,68,0.25)]",
+    error: "border-red-500 bg-red-950/40 text-red-400 shadow-[0_0_30px_rgba(239,68,68,0.25)]",
   };
 
   const tabs = [
-    { key: "live", label: "Live Control Room" },
-    { key: "benchmark", label: "50k Benchmark" },
-    { key: "reviews", label: "Pending Reviews" },
-    { key: "audit", label: "Audit Trail" },
+    { key: "live", label: "Live Recovery", icon: Zap },
+    { key: "benchmark", label: "50k Benchmark", icon: BarChart3 },
+    { key: "reviews", label: "Escalation Queue", icon: Shield },
+    { key: "audit", label: "Audit Trail", icon: Eye },
   ];
 
   return (
-    <div className="min-h-screen bg-[#070B14] text-gray-100 p-4 md:p-8 font-sans selection:bg-blue-500/30">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#060910] text-gray-100 font-sans selection:bg-blue-500/30">
+      <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 space-y-6">
 
-        <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-800 pb-6 gap-4">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3 rounded-xl shadow-lg shadow-blue-900/20">
-              <Zap className="w-6 h-6 text-white" />
+            <div className="relative">
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3 rounded-2xl shadow-lg shadow-blue-900/30">
+                <Zap className="w-7 h-7 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#060910] animate-pulse" />
             </div>
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-white to-gray-400 bg-clip-text text-transparent">
                 RecoveryOS
               </h1>
-              <p className="text-blue-400 text-sm font-medium mt-1">Razorpay Track 03: Autonomous Revenue Recovery</p>
+              <p className="text-blue-400/80 text-sm font-medium">Razorpay AI Buildathon · Track 03</p>
             </div>
           </div>
-          <div className="flex items-center space-x-2 bg-[#0A1A14] text-green-400 border border-green-500/30 px-4 py-2 rounded-full font-medium text-sm shadow-[0_0_20px_rgba(34,197,94,0.15)]">
-            <Database className="w-4 h-4" />
-            <span>PostgreSQL + Razorpay Test API Live</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1.5 rounded-lg text-xs font-medium">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              PostgreSQL Live
+            </div>
+            <div className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-xs font-medium">
+              <CreditCard className="w-3 h-3" />
+              Razorpay Test Mode
+            </div>
           </div>
         </header>
 
-        <div className="flex space-x-6 border-b border-gray-800 pb-px overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => {
-                setActiveTab(tab.key as any);
-                if (tab.key === "reviews") fetchReviews();
-              }}
-              className={`pb-3 font-semibold text-sm transition-all border-b-2 whitespace-nowrap ${activeTab === tab.key
-                  ? "border-blue-500 text-blue-400"
-                  : "border-transparent text-gray-500 hover:text-gray-300"
-                }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Navigation */}
+        <nav className="flex gap-1 bg-[#0A0E18] p-1 rounded-xl border border-gray-800/50">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key as any);
+                  if (tab.key === "reviews") fetchReviews();
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
+                  ? "bg-[#141B2D] text-white shadow-sm border border-gray-700/50"
+                  : "text-gray-500 hover:text-gray-300"
+                  }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
 
+        {/* ============ LIVE TAB ============ */}
         {activeTab === "live" && (
-          <div className="animate-in fade-in duration-500 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-              <div className="bg-gradient-to-b from-[#111827] to-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="flex justify-between items-start">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Executions</p>
-                  <Activity className="w-4 h-4 text-blue-400" />
-                </div>
-                <p className="text-3xl font-bold mt-3 text-white">{analytics?.total_executions ?? "—"}</p>
-              </div>
-
-              <div className="bg-gradient-to-b from-[#111827] to-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="flex justify-between items-start">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recovered</p>
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                </div>
-                <p className="text-3xl font-bold mt-3 text-green-400">{analytics?.successful_recoveries ?? "—"}</p>
-              </div>
-
-              <div className="bg-gradient-to-b from-[#111827] to-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="flex justify-between items-start">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pending Reviews</p>
-                  <ShieldAlert className="w-4 h-4 text-amber-500" />
-                </div>
-                <p className="text-3xl font-bold mt-3 text-amber-400">{analytics?.pending_reviews ?? "—"}</p>
-              </div>
-
-              <div className="bg-gradient-to-b from-[#111827] to-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="flex justify-between items-start">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recovery Rate</p>
-                  <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-3xl font-bold mt-3 text-emerald-400">{analytics?.recovery_rate_percent ?? "—"}%</p>
-              </div>
+          <div className="space-y-6">
+            {/* Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {[
+                { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, color: "blue" },
+                { label: "Recovered", value: analytics?.successful_recoveries ?? "—", icon: CheckCircle, color: "green" },
+                { label: "Blocked", value: analytics?.failed_recoveries ?? "—", icon: XCircle, color: "red" },
+                { label: "Pending Review", value: analytics?.pending_reviews ?? "—", icon: ShieldAlert, color: "amber" },
+                { label: "Recovery Rate", value: `${analytics?.recovery_rate_percent ?? "—"}%`, icon: TrendingUp, color: "emerald" },
+              ].map((metric) => {
+                const Icon = metric.icon;
+                return (
+                  <motion.div
+                    key={metric.label}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`bg-[#0C1120] p-4 rounded-xl border border-gray-800/60 relative overflow-hidden`}
+                  >
+                    <div className={`absolute top-0 right-0 w-20 h-20 bg-${metric.color}-500/5 rounded-full blur-2xl -mr-6 -mt-6`} />
+                    <div className="flex items-center gap-2 mb-2">
+                      <Icon className={`w-3.5 h-3.5 text-${metric.color}-400`} />
+                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{metric.label}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-white">{metric.value}</p>
+                  </motion.div>
+                );
+              })}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-1 space-y-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-gray-200">
-                  <Play className="w-5 h-5 text-indigo-400" /> Inject Event
-                </h2>
-                <form onSubmit={handleCustomSubmit} className="bg-[#111827] p-6 rounded-2xl border border-gray-800 space-y-5 shadow-xl">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Amount (₹)</label>
+            {/* Pipeline Visualization */}
+            <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 p-6 overflow-hidden">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recovery Pipeline</h2>
+              </div>
+
+              {/* Pipeline Stages */}
+              <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
+                {STAGES.map((stage, i) => {
+                  const Icon = stage.icon;
+                  const state = getStageState(stage.key);
+                  const isResultStage = stage.key === "result" && pipelineResult;
+                  const colorClass = isResultStage && state === "active"
+                    ? resultColors[pipelineResult!]
+                    : stageColors[state];
+
+                  return (
+                    <React.Fragment key={stage.key}>
+                      {i > 0 && (
+                        <div className="flex items-center px-1 flex-shrink-0">
+                          <motion.div
+                            initial={false}
+                            animate={{
+                              backgroundColor: state === "complete" || state === "active" ? "#22c55e" : "#1f2937",
+                              scaleX: state === "complete" ? 1 : state === "active" ? 0.6 : 0.3,
+                            }}
+                            className="w-8 h-0.5 rounded-full origin-left"
+                            transition={{ duration: 0.3 }}
+                          />
+                          <ArrowRight className={`w-3 h-3 flex-shrink-0 ${state === "complete" || state === "active" ? "text-green-500" : "text-gray-700"}`} />
+                        </div>
+                      )}
+                      <motion.div
+                        layout
+                        initial={false}
+                        animate={{
+                          scale: state === "active" ? 1.02 : 1,
+                        }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        className={`flex-1 min-w-[140px] p-4 rounded-xl border-2 transition-colors duration-500 ${colorClass}`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          {state === "active" && !isResultStage && (
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </motion.div>
+                          )}
+                          {state === "complete" && <CheckCircle className="w-4 h-4 text-green-400" />}
+                          {(state === "idle" || state === "pending") && <Icon className="w-4 h-4" />}
+                          {state === "active" && isResultStage && (
+                            pipelineResult === "success" ? <CheckCircle className="w-4 h-4" /> :
+                              pipelineResult === "escalated" ? <ShieldAlert className="w-4 h-4" /> :
+                                <XCircle className="w-4 h-4" />
+                          )}
+                          <span className="text-xs font-bold uppercase tracking-wider">{stage.label}</span>
+                        </div>
+                        <p className="text-[11px] opacity-70">
+                          {state === "active" ? (pipelineData.stage_info || stage.desc) : stage.desc}
+                        </p>
+                        {state === "active" && pipelineData.result_status && stage.key === "result" && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            className="mt-2 pt-2 border-t border-current/20"
+                          >
+                            <p className="text-xs font-bold">{pipelineData.result_status}</p>
+                            {pipelineData.provider_ref && (
+                              <p className="text-[10px] opacity-70 font-mono mt-0.5">Ref: {pipelineData.provider_ref}</p>
+                            )}
+                          </motion.div>
+                        )}
+                      </motion.div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Quick Action Panel */}
+              <div className="mt-6 pt-5 border-t border-gray-800/60">
+                <form onSubmit={handleCustomSubmit} className="flex items-end gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Amount</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-3.5 text-gray-500 font-medium">₹</span>
+                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm font-medium">₹</span>
                       <input
                         type="number"
                         value={customAmountRupees}
                         onChange={(e) => setCustomAmountRupees(Number(e.target.value))}
-                        className="w-full bg-[#0B0F19] border border-gray-700 text-white rounded-xl pl-8 p-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg pl-7 pr-3 py-2.5 text-sm focus:ring-1 focus:ring-blue-500/50 outline-none"
                         required
                         min="1"
                       />
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Failure Reason</label>
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Failure Reason</label>
                     <select
                       value={customReason}
                       onChange={(e) => setCustomReason(e.target.value)}
-                      className="w-full bg-[#0B0F19] border border-gray-700 text-white rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-blue-500/50 outline-none"
                     >
                       <option value="insufficient_funds">Insufficient Funds</option>
                       <option value="temporary_network_timeout">Network Timeout</option>
@@ -272,313 +462,390 @@ export default function RecoveryOSDashboard() {
                       <option value="card_expired">Card Expired</option>
                     </select>
                   </div>
-
                   <button
                     type="submit"
                     disabled={isRecovering}
-                    className="w-full flex justify-center items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-blue-900/30 mt-2"
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-2.5 px-6 rounded-lg transition-all disabled:opacity-40 shadow-lg shadow-blue-900/30 text-sm"
                   >
-                    {isRecovering ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
-                    {isRecovering ? "Processing..." : "Run AI Recovery"}
+                    {isRecovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                    {isRecovering ? "Recovering..." : "Trigger Recovery"}
                   </button>
+                  {pipelineStage !== "idle" && !isRecovering && (
+                    <button
+                      type="button"
+                      onClick={() => { setPipelineStage("idle"); setPipelineResult(null); setPipelineData({}); }}
+                      className="text-gray-500 hover:text-gray-300 text-xs underline py-2.5"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </form>
               </div>
+            </div>
 
-              <div className="lg:col-span-2 space-y-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-gray-200">
-                  <TerminalSquare className="w-5 h-5 text-indigo-400" /> System Audit Trail
-                </h2>
-                <div className="bg-[#0A0D14] rounded-2xl border border-gray-800 p-6 h-[420px] overflow-y-auto font-mono text-sm shadow-inner relative">
-                  {logs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-600">
-                      <TerminalSquare className="w-10 h-10 mb-3 opacity-20" />
-                      <p>System idle. Awaiting revenue risk events...</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {logs.map((log) => (
-                        <div key={log.id} className={`p-3 rounded-lg border border-l-4 shadow-sm ${log.type === "error" ? "bg-red-950/20 border-red-900/50 border-l-red-500 text-red-300" :
-                            log.type === "success" ? "bg-green-950/20 border-green-900/50 border-l-green-500 text-green-300" :
-                              log.type === "warning" ? "bg-amber-950/20 border-amber-900/50 border-l-amber-500 text-amber-300" :
-                                "bg-blue-950/20 border-blue-900/50 border-l-blue-500 text-blue-300"
-                          }`}>
-                          <span className="text-gray-500 mr-3 text-xs">[{new Date(parseInt(log.id.split("-")[0])).toLocaleTimeString()}]</span>
-                          {log.text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+            {/* Recent Transactions Table */}
+            <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-800/60 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-500" />
+                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recent Transactions</h2>
                 </div>
+                <span className="text-xs text-gray-600">{recentTxns.length} records</span>
               </div>
+
+              {recentTxns.length === 0 ? (
+                <div className="py-16 text-center text-gray-600">
+                  <Database className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No transactions yet. Trigger a recovery above to see it here.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-800/40">
+                  {recentTxns.map((txn) => {
+                    const isExpanded = expandedTxn === txn.payment_id;
+                    const statusColors: Record<string, string> = {
+                      STARTED: "bg-green-500/10 text-green-400 border-green-500/20",
+                      SUCCEEDED: "bg-green-500/10 text-green-400 border-green-500/20",
+                      FAILED: "bg-red-500/10 text-red-400 border-red-500/20",
+                    };
+                    const statusColor = statusColors[txn.status] || "bg-gray-500/10 text-gray-400 border-gray-500/20";
+
+                    return (
+                      <div key={txn.execution_id}>
+                        <button
+                          onClick={() => toggleTxnAudit(txn.payment_id)}
+                          className="w-full px-6 py-3.5 flex items-center gap-4 hover:bg-[#0E1326] transition-colors text-left"
+                        >
+                          <div className="w-5 flex-shrink-0">
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-500" />
+                            )}
+                          </div>
+                          <span className="text-xs font-mono text-gray-400 w-28 flex-shrink-0">{txn.payment_id}</span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${statusColor} flex-shrink-0`}>
+                            {txn.status}
+                          </span>
+                          <span className="text-xs text-gray-500 flex-1 truncate">{txn.message}</span>
+                          <span className="text-[10px] text-gray-600 flex-shrink-0">
+                            {txn.created_at ? new Date(txn.created_at).toLocaleTimeString() : ""}
+                          </span>
+                        </button>
+
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-6 pb-4 pl-16">
+                                {txnAudit[txn.payment_id]?.error ? (
+                                  <p className="text-xs text-gray-500 italic">{txnAudit[txn.payment_id].error}</p>
+                                ) : txnAudit[txn.payment_id]?.trail ? (
+                                  <div className="relative pl-4 border-l border-gray-800">
+                                    {txnAudit[txn.payment_id].trail.map((entry: any, i: number) => {
+                                      const eventColors: Record<string, string> = {
+                                        failure_detected: "text-amber-400",
+                                        ai_diagnosis: "text-blue-400",
+                                        policy_decision: "text-indigo-400",
+                                        execution_succeeded: "text-green-400",
+                                        execution_failed: "text-red-400",
+                                        escalated_to_review: "text-amber-400",
+                                        review_approved: "text-green-400",
+                                        review_rejected: "text-red-400",
+                                        stopping_rule_triggered: "text-red-400",
+                                      };
+                                      return (
+                                        <div key={i} className="relative pb-3 last:pb-0">
+                                          <div className="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full bg-[#0A0E18] border-2 border-gray-600" />
+                                          <div className="flex items-baseline gap-2">
+                                            <span className={`text-[11px] font-semibold ${eventColors[entry.event_type] || "text-gray-400"}`}>
+                                              {entry.event_type.replace(/_/g, " ")}
+                                            </span>
+                                            <span className="text-[10px] text-gray-600">
+                                              {entry.created_at ? new Date(entry.created_at).toLocaleTimeString() : ""}
+                                            </span>
+                                          </div>
+                                          <pre className="text-[10px] text-gray-500 mt-0.5 font-mono whitespace-pre-wrap break-all">
+                                            {JSON.stringify(entry.data, null, 1)}
+                                          </pre>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    Loading audit trail...
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
 
+        {/* ============ BENCHMARK TAB ============ */}
         {activeTab === "benchmark" && (
-          <div className="animate-in fade-in duration-500 bg-gradient-to-b from-[#111827] to-[#0B0F19] p-8 rounded-3xl border border-gray-800 shadow-2xl">
+          <div className="bg-[#0A0E18] p-8 rounded-2xl border border-gray-800/60">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
-                <BarChart3 className="w-8 h-8 text-blue-500" />
-                <h2 className="text-2xl font-bold text-white tracking-tight">50,000 Event Evaluation Harness</h2>
+                <BarChart3 className="w-7 h-7 text-blue-500" />
+                <div>
+                  <h2 className="text-xl font-bold text-white">50,000 Event Evaluation</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Synthetic batch processed through Policy Engine</p>
+                </div>
               </div>
               <button
                 onClick={runBenchmarkSimulation}
                 disabled={isSimulating}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-medium transition disabled:opacity-50"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50"
               >
-                {isSimulating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                {isSimulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 {isSimulating ? "Running..." : "Run Simulation"}
               </button>
             </div>
 
             {!benchmarkData && !isSimulating && (
-              <div className="py-20 text-center text-gray-500">
-                <Database className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p>Click &ldquo;Run Simulation&rdquo; to generate and evaluate 50,000 synthetic events via the API.</p>
+              <div className="py-20 text-center text-gray-600">
+                <Database className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">Run simulation to evaluate against 50k synthetic payment failures</p>
               </div>
             )}
 
             {isSimulating && (
               <div className="py-20 text-center text-blue-400">
-                <RefreshCw className="w-12 h-12 mx-auto mb-4 animate-spin opacity-50" />
-                <p className="animate-pulse">Synthesizing events and running through Policy Engine...</p>
+                <RefreshCw className="w-10 h-10 mx-auto mb-3 animate-spin opacity-50" />
+                <p className="animate-pulse text-sm">Processing events through Policy Engine...</p>
               </div>
             )}
 
             {benchmarkData && !isSimulating && (
-              <div className="animate-in fade-in duration-500">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                  <div className="bg-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-inner">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Baseline Recovery</p>
-                    <p className="text-xl font-mono text-gray-300">₹{(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}</p>
-                  </div>
-                  <div className="bg-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-inner">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Agent Recovery</p>
-                    <p className="text-xl font-mono text-green-400">₹{(benchmarkData.ai_recovery_paise / 100).toLocaleString()}</p>
-                  </div>
-                  <div className="bg-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-inner">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Uplift</p>
-                    <p className="text-xl font-mono text-blue-400">+{benchmarkData.incremental_uplift_percent}%</p>
-                  </div>
-                  <div className="bg-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-inner">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Policy Blocks</p>
-                    <p className="text-xl font-mono text-amber-400">{benchmarkData.policy_blocks.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-[#0B0F19] p-5 rounded-2xl border border-gray-800 shadow-inner relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-full blur-xl -mr-4 -mt-4"></div>
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Unsafe Actions</p>
-                    <p className="text-xl font-mono text-green-400">{benchmarkData.unsafe_action_rate}%</p>
-                  </div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                  {[
+                    { label: "Baseline", value: `₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}`, color: "gray" },
+                    { label: "AI Recovery", value: `₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}`, color: "green" },
+                    { label: "Uplift", value: `+${benchmarkData.incremental_uplift_percent}%`, color: "blue" },
+                    { label: "Policy Blocks", value: benchmarkData.policy_blocks.toLocaleString(), color: "amber" },
+                    { label: "Unsafe Rate", value: `${benchmarkData.unsafe_action_rate}%`, color: "green" },
+                  ].map(m => (
+                    <div key={m.label} className="bg-[#060910] p-4 rounded-xl border border-gray-800/40">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{m.label}</p>
+                      <p className={`text-lg font-mono font-bold text-${m.color}-400`}>{m.value}</p>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="bg-[#05080F] p-6 rounded-2xl border border-gray-800 font-mono text-sm text-gray-300 overflow-x-auto whitespace-pre shadow-inner">
-                  {`==================== RECOVERY OS EVALUATION RESULTS ====================
-Total Synthetic Events Evaluated: ${benchmarkData.total_events.toLocaleString()}
+                <div className="bg-[#040710] p-5 rounded-xl border border-gray-800/40 font-mono text-xs text-gray-400 overflow-x-auto whitespace-pre leading-relaxed">
+{`═══ RECOVERYOS EVALUATION ═══════════════════════════════════
+Events: ${benchmarkData.total_events.toLocaleString()}  |  Unsafe: ${benchmarkData.unsafe_action_rate}%  |  Blocks: ${benchmarkData.policy_blocks.toLocaleString()}
 
-[INTERVENTION SAFETY]
-Unsafe action rate:        ${benchmarkData.unsafe_action_rate}%  (Enforced by PolicyEngine)
-Policy Engine Blocks:      ${benchmarkData.policy_blocks.toLocaleString()} (High-value, Suspicious, or Stopping Rules)
-Escalations to Review:     ${benchmarkData.escalations?.toLocaleString() ?? 'N/A'}
+Baseline (static rules):  ₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}
+RecoveryOS (AI agent):    ₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}
+Uplift:                   +${benchmarkData.incremental_uplift_percent}%
 
-[OUTCOMES]
-Baseline recovery (Rules): ₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}
-Agent recovery (RecoveryOS): ₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}
-Recovery uplift:           +${benchmarkData.incremental_uplift_percent}%
-
-CONCLUSION: The AI agent identifies high-probability recovery opportunities
-that static rules miss, while strict policy guardrails and stopping rules
-guarantee 0% unsafe API execution.`}
+Escalations to Review:    ${benchmarkData.escalations?.toLocaleString() ?? 'N/A'}
+══════════════════════════════════════════════════════════════`}
                 </div>
-              </div>
+              </motion.div>
             )}
           </div>
         )}
 
+        {/* ============ REVIEWS TAB ============ */}
         {activeTab === "reviews" && (
-          <div className="animate-in fade-in duration-500 space-y-6">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Shield className="w-7 h-7 text-amber-500" />
-                <h2 className="text-2xl font-bold text-white tracking-tight">Escalation Queue</h2>
+                <Shield className="w-6 h-6 text-amber-500" />
+                <h2 className="text-xl font-bold text-white">Escalation Queue</h2>
               </div>
               <button
                 onClick={fetchReviews}
                 disabled={reviewsLoading}
-                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm disabled:opacity-50"
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${reviewsLoading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${reviewsLoading ? "animate-spin" : ""}`} />
                 Refresh
               </button>
             </div>
 
             {reviews.length === 0 ? (
-              <div className="bg-[#111827] rounded-2xl border border-gray-800 p-16 text-center text-gray-500">
-                <Shield className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p className="text-lg">No reviews in queue</p>
-                <p className="text-sm mt-2">High-value or suspicious transactions will appear here for manual review.</p>
+              <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 py-16 text-center text-gray-600">
+                <Shield className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No reviews in queue</p>
+                <p className="text-xs mt-1 text-gray-700">Suspicious or high-value transactions appear here</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {reviews.map((review) => (
-                  <div key={review.review_id} className="bg-[#111827] rounded-2xl border border-gray-800 p-6 shadow-xl">
+                  <motion.div
+                    key={review.review_id}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-[#0A0E18] rounded-xl border border-gray-800/60 p-5"
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${review.status === "pending" ? "bg-amber-900/30 text-amber-400 border border-amber-800" :
-                              review.status === "approved" ? "bg-green-900/30 text-green-400 border border-green-800" :
-                                "bg-red-900/30 text-red-400 border border-red-800"
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${review.status === "pending" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                            review.status === "approved" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              "bg-red-500/10 text-red-400 border-red-500/20"
                             }`}>
                             {review.status}
                           </span>
-                          <span className="text-gray-500 text-sm font-mono">{review.review_id.slice(0, 20)}...</span>
+                          <span className="text-[11px] text-gray-600 font-mono">{review.review_id.slice(0, 16)}...</span>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                           <div>
-                            <span className="text-gray-500 block">Payment</span>
+                            <span className="text-gray-600 block text-[10px] uppercase">Payment</span>
                             <span className="text-white font-mono">{review.payment_id}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">Amount</span>
+                            <span className="text-gray-600 block text-[10px] uppercase">Amount</span>
                             <span className="text-white font-bold">₹{(review.amount / 100).toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">Action</span>
+                            <span className="text-gray-600 block text-[10px] uppercase">Action</span>
                             <span className="text-blue-400">{review.action_type}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">AI Confidence</span>
+                            <span className="text-gray-600 block text-[10px] uppercase">Confidence</span>
                             <span className="text-white">{(review.ai_confidence * 100).toFixed(0)}%</span>
                           </div>
                         </div>
 
-                        <div className="text-sm">
-                          <span className="text-gray-500">Policy Reason: </span>
-                          <span className="text-amber-300">{review.policy_reason}</span>
-                        </div>
+                        <p className="text-xs text-amber-300/70">{review.policy_reason}</p>
                         {review.ai_diagnosis && (
-                          <div className="text-sm">
-                            <span className="text-gray-500">AI Diagnosis: </span>
-                            <span className="text-gray-300">{review.ai_diagnosis.slice(0, 200)}{review.ai_diagnosis.length > 200 ? "..." : ""}</span>
-                          </div>
+                          <p className="text-[11px] text-gray-500 leading-relaxed">{review.ai_diagnosis.slice(0, 200)}{review.ai_diagnosis.length > 200 ? "..." : ""}</p>
                         )}
                       </div>
 
                       {review.status === "pending" && (
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-1.5">
                           <button
                             onClick={() => handleApprove(review.review_id)}
-                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-lg shadow-green-900/20"
+                            className="flex items-center gap-1 bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
                           >
-                            <CheckCircle2 className="w-4 h-4" />
+                            <CheckCircle2 className="w-3 h-3" />
                             Approve
                           </button>
                           <button
                             onClick={() => handleReject(review.review_id)}
-                            className="flex items-center gap-1.5 bg-red-600/80 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition"
+                            className="flex items-center gap-1 bg-red-600/70 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
                           >
-                            <XCircle className="w-4 h-4" />
+                            <XCircle className="w-3 h-3" />
                             Reject
                           </button>
                         </div>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
           </div>
         )}
 
+        {/* ============ AUDIT TAB ============ */}
         {activeTab === "audit" && (
-          <div className="animate-in fade-in duration-500 space-y-6">
+          <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <Eye className="w-7 h-7 text-indigo-500" />
-              <h2 className="text-2xl font-bold text-white tracking-tight">Payment Audit Trail</h2>
+              <Eye className="w-6 h-6 text-indigo-500" />
+              <h2 className="text-xl font-bold text-white">Payment Audit Trail</h2>
             </div>
 
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={auditPaymentId}
-                onChange={(e) => setAuditPaymentId(e.target.value)}
-                placeholder="Enter payment ID (e.g. pay_abc123)"
-                className="flex-1 bg-[#0B0F19] border border-gray-700 text-white rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono"
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-600" />
+                <input
+                  type="text"
+                  value={auditPaymentId}
+                  onChange={(e) => setAuditPaymentId(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && fetchAuditTrail()}
+                  placeholder="Enter payment ID (e.g. pay_abc123)"
+                  className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm focus:ring-1 focus:ring-indigo-500/50 outline-none font-mono"
+                />
+              </div>
               <button
                 onClick={fetchAuditTrail}
                 disabled={auditLoading || !auditPaymentId.trim()}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-medium transition disabled:opacity-50"
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
               >
-                {auditLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                {auditLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                 Lookup
               </button>
             </div>
 
             {auditTrail?.error && (
-              <div className="bg-red-950/20 border border-red-900/50 text-red-300 p-4 rounded-xl">
+              <div className="bg-red-950/20 border border-red-900/30 text-red-300 p-3 rounded-lg text-sm">
                 {auditTrail.error}
               </div>
             )}
 
             {auditTrail?.trail && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-gray-400 text-sm">{auditTrail.total_entries} events for <span className="text-white font-mono">{auditTrail.payment_id}</span></p>
-                </div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-[#0A0E18] rounded-xl border border-gray-800/60 p-6">
+                <p className="text-xs text-gray-500 mb-4">{auditTrail.total_entries} events for <span className="text-white font-mono">{auditTrail.payment_id}</span></p>
 
-                <div className="relative">
-                  <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-gray-800"></div>
+                <div className="relative pl-4 border-l-2 border-gray-800 space-y-4">
+                  {auditTrail.trail.map((entry: any, i: number) => {
+                    const iconMap: Record<string, { icon: any; color: string }> = {
+                      failure_detected: { icon: AlertTriangle, color: "text-amber-500" },
+                      ai_diagnosis: { icon: Activity, color: "text-blue-400" },
+                      policy_decision: { icon: Shield, color: "text-indigo-400" },
+                      execution_started: { icon: Play, color: "text-cyan-400" },
+                      execution_succeeded: { icon: CheckCircle, color: "text-green-400" },
+                      execution_failed: { icon: XCircle, color: "text-red-400" },
+                      escalated_to_review: { icon: ShieldAlert, color: "text-amber-400" },
+                      review_approved: { icon: CheckCircle2, color: "text-green-400" },
+                      review_rejected: { icon: XCircle, color: "text-red-400" },
+                      stopping_rule_triggered: { icon: Clock, color: "text-red-400" },
+                    };
+                    const config = iconMap[entry.event_type] || { icon: Activity, color: "text-gray-400" };
+                    const Icon = config.icon;
 
-                  <div className="space-y-4">
-                    {auditTrail.trail.map((entry: any, i: number) => {
-                      const iconMap: Record<string, { icon: any; color: string }> = {
-                        failure_detected: { icon: AlertTriangle, color: "text-amber-500" },
-                        ai_diagnosis: { icon: Activity, color: "text-blue-400" },
-                        policy_decision: { icon: Shield, color: "text-indigo-400" },
-                        execution_started: { icon: Play, color: "text-cyan-400" },
-                        execution_succeeded: { icon: CheckCircle, color: "text-green-400" },
-                        execution_failed: { icon: XCircle, color: "text-red-400" },
-                        escalated_to_review: { icon: ShieldAlert, color: "text-amber-400" },
-                        review_approved: { icon: CheckCircle2, color: "text-green-400" },
-                        review_rejected: { icon: XCircle, color: "text-red-400" },
-                        stopping_rule_triggered: { icon: Clock, color: "text-red-400" },
-                      };
-
-                      const config = iconMap[entry.event_type] || { icon: Activity, color: "text-gray-400" };
-                      const Icon = config.icon;
-
-                      return (
-                        <div key={i} className="relative flex gap-4 pl-2">
-                          <div className={`relative z-10 flex-shrink-0 w-9 h-9 rounded-full bg-[#111827] border border-gray-700 flex items-center justify-center`}>
-                            <Icon className={`w-4 h-4 ${config.color}`} />
-                          </div>
-                          <div className="flex-1 bg-[#111827] rounded-xl border border-gray-800 p-4 shadow-lg">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className={`text-sm font-semibold ${config.color}`}>
-                                {entry.event_type.replace(/_/g, " ").toUpperCase()}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}
-                              </span>
-                            </div>
-                            <div className="text-xs text-gray-400 font-mono bg-[#0B0F19] p-3 rounded-lg overflow-x-auto">
-                              {JSON.stringify(entry.data, null, 2)}
-                            </div>
-                          </div>
+                    return (
+                      <div key={i} className="relative">
+                        <div className={`absolute -left-[23px] top-0.5 w-4 h-4 rounded-full bg-[#0A0E18] border-2 border-gray-700 flex items-center justify-center`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${config.color.replace("text-", "bg-")}`} />
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="ml-2">
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className={`text-xs font-semibold ${config.color}`}>
+                              {entry.event_type.replace(/_/g, " ")}
+                            </span>
+                            <span className="text-[10px] text-gray-600">
+                              {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}
+                            </span>
+                          </div>
+                          <pre className="text-[11px] text-gray-500 font-mono bg-[#060910] p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+                            {JSON.stringify(entry.data, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {!auditTrail && (
-              <div className="bg-[#111827] rounded-2xl border border-gray-800 p-16 text-center text-gray-500">
-                <Eye className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p className="text-lg">Enter a payment ID to view its complete audit trail</p>
-                <p className="text-sm mt-2">Every step of the recovery pipeline is recorded: detection → AI diagnosis → policy → execution → reconciliation</p>
+              <div className="bg-[#0A0E18] rounded-xl border border-gray-800/60 py-16 text-center text-gray-600">
+                <Eye className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">Enter a payment ID to view its complete audit trail</p>
+                <p className="text-[11px] mt-1 text-gray-700">detection → AI diagnosis → policy → execution → reconciliation</p>
               </div>
             )}
           </div>

@@ -139,10 +139,16 @@ async def execute_recovery(
             )
         )
 
+        is_suspicious = payload.failure_reason in (
+            "suspected_fraud",
+            "fraud_detected",
+            "account_takeover",
+        )
+
         authorization = app_service.authorize(
             decision=decision,
             retry_count=retry_count,
-            suspicious=False,
+            suspicious=is_suspicious,
             first_failure_at=first_failure_at,
             customer_attempts_today=customer_attempts_today,
         )

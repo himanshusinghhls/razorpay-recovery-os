@@ -6,6 +6,7 @@ from .core.lifespan import lifespan
 from .routes.payments import router as payments_router
 from .routes.razorpay import router as razorpay_router
 from .routes.webhooks import router as webhook_router
+from .routes.recoveries import router as recoveries_router
 
 
 app = FastAPI(
@@ -37,6 +38,11 @@ app.include_router(
 
 app.include_router(
     payments_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    recoveries_router,
     prefix="/api/v1",
 )
 

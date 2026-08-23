@@ -1,4 +1,5 @@
-from openai import AsyncOpenAI
+from google import genai
+from google.genai import types
 
 from apps.api.app.config import settings
 from agents.analyst.schemas import AIRecoveryDiagnosis
@@ -8,15 +9,15 @@ from domain.recovery.actions import RecoveryAction, RecoveryActionType
 class RecoveryAnalystAgent:
     """
     AI Agent responsible for diagnosing failed payments and
-    recommending bounded recovery actions.
+    recommending bounded recovery actions using Gemini.
     """
     def __init__(self) -> None:
-        api_key = settings.openai_api_key
+        api_key = settings.gemini_api_key
         
         if not api_key or api_key == "REPLACE_ME":
-            raise ValueError("OPENAI_API_KEY is not configured in the environment.")
+            raise ValueError("GEMINI_API_KEY is not configured in the environment.")
             
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = genai.Client(api_key=api_key)
 
     async def analyze(
         self, 
@@ -28,6 +29,8 @@ class RecoveryAnalystAgent:
     ) -> RecoveryDecision:
         
         prompt = f"""
+        You are a senior revenue recovery analyst AI for Razorpay. You maximize expected recovery value while minimizing friction.
+        
         Analyze the following payment failure and recommend a recovery action.
         Payment ID: {payment_id}
         Customer ID: {customer_id}
@@ -39,20 +42,18 @@ class RecoveryAnalystAgent:
         and select the optimal bounded action.
         """
 
-        # Make the real LLM call using Structured Outputs
-        response = await self.client.beta.chat.completions.parse(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a senior revenue recovery analyst AI for Razorpay. You maximize expected recovery value while minimizing friction."
-                },
-                {"role": "user", "content": prompt}
-            ],
-            response_format=AIRecoveryDiagnosis,
+        # Make the real LLM call using Gemini Structured Outputs
+        response = await self.client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=AIRecoveryDiagnosis,
+                temperature=0.2,
+            ),
         )
         
-        ai_result = response.choices[0].message.parsed
+        ai_result = response.parsed
 
         # Map the AI's Pydantic response back into our strict Domain Models
         action_enum = RecoveryActionType(ai_result.action.action_type)

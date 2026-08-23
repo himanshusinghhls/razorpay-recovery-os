@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     redis_url: str
 
     next_public_api_url: str = "http://localhost:8000"
+    gemini_api_key: str | None = None
 
     cors_origins: list[str] = [
         "http://localhost:3000",

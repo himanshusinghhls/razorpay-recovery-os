@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from apps.api.app.config import settings
 
-# Psycopg 3 async requires the +psycopg scheme
 db_url = settings.database_url.replace("postgresql://", "postgresql+psycopg://")
 
 engine = create_async_engine(db_url, echo=False)

@@ -1,6 +1,6 @@
 from application.execution.executor import RecoveryExecutor
 from application.execution.result import ExecutionResult
-from application.recovery.authorization import RecoveryAuthorization
+from application.recovery.service import RecoveryAuthorization
 
 
 class RecoveryExecutionOrchestrator:

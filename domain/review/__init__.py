@@ -1,2 +1,1 @@
-from domain.audit.models import AuditEntry, AuditEventType
 from domain.review.models import PendingReview, ReviewStatus

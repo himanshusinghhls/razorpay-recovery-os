@@ -11,7 +11,6 @@ def repos():
 async def test_processor_saves_event_and_reconciles(repos):
     webhook_repo, exec_repo = repos
     
-    # Pre-seed an execution
     exec_record = RecoveryExecution(
         execution_id="exec_123",
         payment_id="pay_failed",
@@ -34,7 +33,6 @@ async def test_processor_saves_event_and_reconciles(repos):
     
     assert processed is True
     
-    # Verify execution was updated
     updated_exec = await exec_repo.get("exec_123")
     assert updated_exec.status == ExecutionStatus.SUCCEEDED
 

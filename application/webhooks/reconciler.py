@@ -18,7 +18,6 @@ class RecoveryReconciliationService:
         if not execution:
             return False
 
-        # Transition state
         updated_execution = RecoveryExecution(
             execution_id=execution.execution_id,
             payment_id=execution.payment_id,

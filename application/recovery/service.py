@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 
 from application.execution.authorization import ExecutionAuthorization
 from domain.decision.models import RecoveryDecision
 from domain.policy.engine import PolicyDecision, RecoveryPolicyEngine
 from domain.policy.models import PolicyContext
-from domain.recovery.actions import RecoveryActionType
+from domain.recovery.actions import RecoveryAction, RecoveryActionType
 
 
 @dataclass(frozen=True)
@@ -16,7 +18,7 @@ class RecoveryAuthorization:
     explicit authorization for the exact action.
     """
 
-    action: object
+    action: RecoveryAction | None
     policy_decision: PolicyDecision
     executable: bool
     execution_authorization: ExecutionAuthorization | None = None
@@ -40,6 +42,8 @@ class RecoveryApplicationService:
         decision: RecoveryDecision,
         retry_count: int,
         suspicious: bool,
+        first_failure_at: Optional[datetime] = None,
+        customer_attempts_today: int = 0,
     ) -> RecoveryAuthorization:
 
         action = decision.action
@@ -63,6 +67,8 @@ class RecoveryApplicationService:
             amount=decision.amount,
             retry_count=retry_count,
             suspicious=suspicious,
+            first_failure_at=first_failure_at,
+            customer_attempts_today=customer_attempts_today,
         )
 
         policy_decision = self.policy_engine.evaluate(context)

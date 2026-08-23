@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from domain.policy.models import PolicyContext
 
@@ -26,15 +27,13 @@ class RecoveryPolicyEngine:
 
     MAX_RETRY_ATTEMPTS = 2
     HIGH_VALUE_THRESHOLD = 2500000
+    MAX_RECOVERY_WINDOW_HOURS = 72
+    MAX_CUSTOMER_DAILY_ATTEMPTS = 5
 
     def evaluate(
         self,
         context: PolicyContext,
     ) -> PolicyDecision:
-
-        # ---------------------------------------------------------
-        # 1. Validate financial amount
-        # ---------------------------------------------------------
 
         if context.amount <= 0:
             return PolicyDecision(
@@ -43,20 +42,12 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ---------------------------------------------------------
-        # 2. Validate retry count
-        # ---------------------------------------------------------
-
         if context.retry_count < 0:
             return PolicyDecision(
                 allowed=False,
                 reason="Retry count cannot be negative",
                 requires_human_approval=False,
             )
-
-        # ---------------------------------------------------------
-        # 3. Enforce retry limit
-        # ---------------------------------------------------------
 
         if context.retry_count >= self.MAX_RETRY_ATTEMPTS:
             return PolicyDecision(
@@ -65,20 +56,12 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ---------------------------------------------------------
-        # 4. Suspicious transactions require human review
-        # ---------------------------------------------------------
-
         if context.suspicious:
             return PolicyDecision(
                 allowed=False,
                 reason="Suspicious activity requires manual review",
                 requires_human_approval=True,
             )
-
-        # ---------------------------------------------------------
-        # 5. High-value transactions require merchant approval
-        # ---------------------------------------------------------
 
         if context.amount >= self.HIGH_VALUE_THRESHOLD:
             return PolicyDecision(
@@ -87,12 +70,38 @@ class RecoveryPolicyEngine:
                 requires_human_approval=True,
             )
 
-        # ---------------------------------------------------------
-        # 6. Otherwise the action is allowed
-        # ---------------------------------------------------------
+        if context.first_failure_at is not None:
+            now = datetime.now(timezone.utc)
+            failure_time = context.first_failure_at
+            if failure_time.tzinfo is None:
+                failure_time = failure_time.replace(tzinfo=timezone.utc)
+
+            elapsed = now - failure_time
+            if elapsed > timedelta(hours=self.MAX_RECOVERY_WINDOW_HOURS):
+                return PolicyDecision(
+                    allowed=False,
+                    reason=(
+                        f"Recovery window expired: "
+                        f"{elapsed.total_seconds() / 3600:.0f}h elapsed, "
+                        f"max is {self.MAX_RECOVERY_WINDOW_HOURS}h"
+                    ),
+                    requires_human_approval=False,
+                )
+
+        if context.customer_attempts_today >= self.MAX_CUSTOMER_DAILY_ATTEMPTS:
+            return PolicyDecision(
+                allowed=False,
+                reason=(
+                    f"Customer daily attempt limit reached: "
+                    f"{context.customer_attempts_today} attempts today, "
+                    f"max is {self.MAX_CUSTOMER_DAILY_ATTEMPTS}"
+                ),
+                requires_human_approval=False,
+            )
 
         return PolicyDecision(
             allowed=True,
             reason="Action satisfies recovery policy",
             requires_human_approval=False,
         )
+

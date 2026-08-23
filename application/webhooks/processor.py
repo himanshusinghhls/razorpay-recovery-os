@@ -36,10 +36,8 @@ class WebhookProcessor:
             received_at=datetime.now(timezone.utc),
         )
 
-        # Save event idempotently
         await self.repository.save(event)
 
-        # Reconcile business state
         if event_type == "payment.captured":
             order_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("order_id")
             if order_id:

@@ -8,6 +8,8 @@ from .routes.razorpay import router as razorpay_router
 from .routes.webhooks import router as webhook_router
 from .routes.recoveries import router as recoveries_router
 from .routes.analytics import router as analytics_router
+from .routes.audit import router as audit_router
+from .routes.reviews import router as reviews_router
 
 
 app = FastAPI(
@@ -49,6 +51,16 @@ app.include_router(
 
 app.include_router(
     analytics_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    audit_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    reviews_router,
     prefix="/api/v1",
 )
 

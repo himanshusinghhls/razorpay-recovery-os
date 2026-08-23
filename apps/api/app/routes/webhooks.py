@@ -37,7 +37,6 @@ async def razorpay_webhook(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    # Dependency Injection
     webhook_repo = PostgresWebhookEventRepository(session)
     execution_repo = PostgresExecutionRepository(session)
     reconciler = RecoveryReconciliationService(execution_repo)

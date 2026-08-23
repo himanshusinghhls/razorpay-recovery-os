@@ -28,7 +28,6 @@ def mock_gemini_response():
 async def test_analyst_agent_returns_valid_decision(mock_genai_client, mock_settings, mock_gemini_response):
     mock_settings.gemini_api_key = "dummy-key"
     
-    # Wire the mocked Gemini client to return our fake parsed response
     mock_client_instance = MagicMock()
     mock_client_instance.aio.models.generate_content = AsyncMock(return_value=mock_gemini_response)
     mock_genai_client.return_value = mock_client_instance

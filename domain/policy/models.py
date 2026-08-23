@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 
 from domain.recovery.actions import RecoveryActionType
 
@@ -16,6 +18,8 @@ class PolicyContext:
     amount: int
     retry_count: int
     suspicious: bool
+    first_failure_at: Optional[datetime] = None
+    customer_attempts_today: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.action_type, RecoveryActionType):
@@ -32,3 +36,9 @@ class PolicyContext:
             raise ValueError(
                 "Policy retry count cannot be negative"
             )
+
+        if self.customer_attempts_today < 0:
+            raise ValueError(
+                "Customer attempts today cannot be negative"
+            )
+

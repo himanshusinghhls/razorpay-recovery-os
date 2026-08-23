@@ -42,7 +42,6 @@ class RecoveryAnalystAgent:
         and select the optimal bounded action.
         """
 
-        # Make the real LLM call using Gemini Structured Outputs
         response = await self.client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
@@ -55,7 +54,6 @@ class RecoveryAnalystAgent:
         
         ai_result = response.parsed
 
-        # Map the AI's Pydantic response back into our strict Domain Models
         action_enum = RecoveryActionType(ai_result.action.action_type)
         action = RecoveryAction(
             action_type=action_enum,

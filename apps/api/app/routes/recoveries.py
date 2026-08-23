@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +27,6 @@ async def execute_recovery(
 ):
     execution_id = f"exec_{uuid.uuid4().hex[:16]}"
     
-    # 1. Initialize Dependencies
     razorpay_client = request.app.state.razorpay
     gateway = RazorpayGateway(client=razorpay_client)
     executor = RazorpayRecoveryExecutor(gateway=gateway)
@@ -41,7 +39,6 @@ async def execute_recovery(
     agent = RecoveryAnalystAgent()
 
     try:
-        # 2. AI Analysis
         decision = await agent.analyze(
             payment_id=payload.payment_id,
             customer_id=payload.customer_id,
@@ -49,7 +46,6 @@ async def execute_recovery(
             failure_reason=payload.failure_reason,
         )
 
-        # 3. Policy Authorization
         authorization = app_service.authorize(
             decision=decision,
             retry_count=0,
@@ -57,7 +53,6 @@ async def execute_recovery(
         )
 
         if not authorization.executable:
-            # Policy blocked the action
             record = RecoveryExecution(
                 execution_id=execution_id,
                 payment_id=payload.payment_id,
@@ -75,10 +70,8 @@ async def execute_recovery(
                 message=record.message
             )
 
-        # 4. Execution
         execution_result = await orchestrator.execute(authorization)
         
-        # 5. Persistence
         final_status = ExecutionStatus.STARTED if execution_result.success else ExecutionStatus.FAILED
         record = RecoveryExecution(
             execution_id=execution_id,
@@ -90,7 +83,6 @@ async def execute_recovery(
         )
         await repo.create(record)
 
-        # 6. Response
         return RecoveryResponse(
             execution_id=execution_id,
             status=final_status.value,
@@ -100,5 +92,23 @@ async def execute_recovery(
         )
 
     except Exception as e:
-        # Failsafe for unhandled errors
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{execution_id}")
+async def get_execution(
+    execution_id: str,
+    session: AsyncSession = Depends(get_db_session),
+):
+    repo = PostgresExecutionRepository(session=session)
+    execution = await repo.get(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    return {
+        "execution_id": execution.execution_id,
+        "payment_id": execution.payment_id,
+        "action_type": execution.action_type,
+        "status": execution.status.value,
+        "external_reference": execution.external_reference,
+        "message": execution.message
+    }

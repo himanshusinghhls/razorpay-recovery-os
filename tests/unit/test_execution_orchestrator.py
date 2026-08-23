@@ -120,7 +120,7 @@ async def test_retry_limit_prevents_execution():
 @pytest.mark.asyncio
 async def test_high_value_action_is_not_executed():
     authorization = make_authorization(
-        amount=25_000,
+        amount=2500000,
     )
 
     orchestrator = RecoveryExecutionOrchestrator(

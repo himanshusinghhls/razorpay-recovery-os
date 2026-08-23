@@ -25,7 +25,7 @@ class RecoveryPolicyEngine:
     """
 
     MAX_RETRY_ATTEMPTS = 2
-    HIGH_VALUE_THRESHOLD = 25_000
+    HIGH_VALUE_THRESHOLD = 2500000
 
     def evaluate(
         self,

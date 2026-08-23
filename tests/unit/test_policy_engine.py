@@ -55,7 +55,7 @@ def test_high_value_transaction_requires_human():
     engine = RecoveryPolicyEngine()
 
     decision = engine.evaluate(
-        make_context(amount=25_000)
+        make_context(amount=250000000)
     )
 
     assert decision.allowed is False

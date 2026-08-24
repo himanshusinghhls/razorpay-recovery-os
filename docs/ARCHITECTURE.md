@@ -12,25 +12,25 @@ RecoveryOS is designed around a strictly bounded AI agent. The AI is used for *i
 ```mermaid
 flowchart TB
     subgraph Detection
-      A[Razorpay Checkout Fails] --> B[Webhook / API Trigger]
+      A["Razorpay Checkout Fails"] --> B["Webhook / API Trigger"]
     end
 
     subgraph Intelligence
-      B --> C[Gemini 2.5 Flash]
-      C --> D[Diagnose Failure]
-      D --> E[Propose Action & Probability]
+      B --> C["Gemini 2.5 Flash"]
+      C --> D["Diagnose Failure"]
+      D --> E["Propose Action & Probability"]
     end
 
     subgraph Safety Boundary
-      E --> F{Policy Engine}
-      F -->|Pass| G[Recovery Execution]
-      F -->|Block: Suspicious/High-Value| H[Human Review Queue]
-      F -->|Block: Limits Exceeded| I[Stopping Rule (Halt)]
+      E --> F{"Policy Engine"}
+      F -->|"Pass"| G["Recovery Execution"]
+      F -->|"Block: Suspicious/High-Value"| H["Human Review Queue"]
+      F -->|"Block: Limits Exceeded"| I["Stopping Rule (Halt)"]
     end
 
     subgraph Execution & Audit
-      G --> J[Razorpay Retry / Payment Link]
-      J --> K[(PostgreSQL Audit Log)]
+      G --> J["Razorpay Retry / Payment Link"]
+      J --> K[("PostgreSQL Audit Log")]
       H --> K
       I --> K
     end

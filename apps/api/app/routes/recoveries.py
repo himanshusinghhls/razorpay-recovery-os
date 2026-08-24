@@ -280,7 +280,13 @@ async def execute_recovery(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logger = logging.getLogger("recoveryos.api")
+        logger.exception("Recovery execution failed for %s", payload.payment_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Recovery execution failed. Check server logs for details.",
+        )
 
 
 @router.get("/{execution_id}")
@@ -301,3 +307,40 @@ async def get_execution(
         "external_reference": execution.external_reference,
         "message": execution.message,
     }
+
+
+@router.post("/create-order")
+async def create_razorpay_order(
+    request: Request,
+    amount: int = 15000,
+    currency: str = "INR",
+):
+    """
+    Creates a real Razorpay order for the frontend Checkout flow.
+    This enables the realistic payment experience on the dashboard.
+    """
+    razorpay_client = request.app.state.razorpay
+    gateway = RazorpayGateway(client=razorpay_client)
+
+    try:
+        receipt = f"rcvry_{uuid.uuid4().hex[:12]}"
+        order = await gateway.create_retry_order(
+            amount=amount,
+            currency=currency,
+            receipt=receipt,
+            notes={"source": "recovery_os_dashboard"},
+        )
+
+        return {
+            "order_id": order.get("id"),
+            "amount": order.get("amount"),
+            "currency": order.get("currency"),
+            "receipt": receipt,
+        }
+    except Exception:
+        import logging
+        logging.getLogger("recoveryos.api").exception("Failed to create order")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create Razorpay order",
+        )

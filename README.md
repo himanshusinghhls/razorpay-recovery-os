@@ -71,8 +71,6 @@ When Razorpay sends `payment.captured`, our webhook handler verifies the signatu
 
 ## What Broke, and How I Fixed It
 
-> *This is the section the judges read first.*
-
 1. **Circular import death spiral**: `RecoveryAuthorization` was defined in two modules. The orchestrator imported from `authorization.py` which imported from `service.py` which imported from `execution/` which imported `authorization.py`. Fixed by making `service.py` the canonical source and turning `authorization.py` into a re-export shim.
 
 2. **Database schema drift**: Added `customer_id` to the SQLAlchemy model but `Base.metadata.create_all` doesn't ALTER existing tables. Production consequence: every query crashed with `UndefinedColumn`. Created `scripts/reset_db.py` to handle destructive migrations during development.

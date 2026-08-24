@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Activity, ShieldAlert, CheckCircle, RefreshCw, ArrowUpRight,
+  Activity, ShieldAlert, CheckCircle, RefreshCw,
   Zap, Play, BarChart3, Database, Shield, Clock, Eye, XCircle,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
-  ArrowRight, CreditCard, TrendingUp, Search
+  ArrowRight, CreditCard, TrendingUp, Search, Wallet,
+  CircleDollarSign, Lock, Sparkles, Ban, User
 } from "lucide-react";
 
 const API_BASE = "http://127.0.0.1:8000/api/v1";
@@ -25,237 +26,309 @@ interface Transaction {
   created_at: string | null;
 }
 
-const STAGES = [
-  { key: "detect", label: "Detect", icon: AlertTriangle, desc: "Payment failure detected" },
-  { key: "diagnose", label: "AI Diagnose", icon: Activity, desc: "Gemini 2.5 Flash analyzing" },
-  { key: "policy", label: "Policy Gate", icon: Shield, desc: "Safety boundary check" },
-  { key: "execute", label: "Execute", icon: Play, desc: "Razorpay API call" },
-  { key: "result", label: "Result", icon: CheckCircle, desc: "Recovery outcome" },
-] as const;
+const FAILURE_REASONS = [
+  { value: "insufficient_funds", label: "Insufficient Funds", emoji: "💳" },
+  { value: "temporary_network_timeout", label: "Network Timeout", emoji: "🌐" },
+  { value: "suspected_fraud", label: "Suspected Fraud", emoji: "🚨" },
+  { value: "card_expired", label: "Card Expired", emoji: "📅" },
+];
+
+const spring = { type: "spring", stiffness: 300, damping: 28 };
+const stagger = { staggerChildren: 0.08, delayChildren: 0.1 };
 
 export default function RecoveryOSDashboard() {
   const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit">("live");
 
+  // Pipeline state
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
   const [pipelineResult, setPipelineResult] = useState<PipelineResult>(null);
-  const [pipelineData, setPipelineData] = useState<Record<string, any>>({});
+  const [pipelineCards, setPipelineCards] = useState<{ key: string; title: string; detail: string; color: string; icon: string }[]>([]);
   const [isRecovering, setIsRecovering] = useState(false);
 
-  const [customAmountRupees, setCustomAmountRupees] = useState<number>(150);
-  const [customReason, setCustomReason] = useState<string>("insufficient_funds");
+  // Payment form
+  const [amount, setAmount] = useState<number>(499);
+  const [simulateMode, setSimulateMode] = useState(false);
+  const [failureReason, setFailureReason] = useState("insufficient_funds");
 
+  // Benchmark
   const [isSimulating, setIsSimulating] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
 
+  // Analytics
   const [analytics, setAnalytics] = useState<any>(null);
   const [recentTxns, setRecentTxns] = useState<Transaction[]>([]);
   const [expandedTxn, setExpandedTxn] = useState<string | null>(null);
   const [txnAudit, setTxnAudit] = useState<Record<string, any>>({});
 
+  // Reviews
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
+  // Audit
   const [auditPaymentId, setAuditPaymentId] = useState<string>("");
   const [auditTrail, setAuditTrail] = useState<any>(null);
   const [auditLoading, setAuditLoading] = useState(false);
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_BASE}/analytics/summary`);
-      setAnalytics(response.data);
-      if (response.data.recent_transactions) {
-        setRecentTxns(response.data.recent_transactions);
-      }
-    } catch (err) { }
+      const res = await axios.get(`${API_BASE}/analytics/summary`);
+      setAnalytics(res.data);
+      if (res.data.recent_transactions) setRecentTxns(res.data.recent_transactions);
+    } catch { }
   }, []);
 
   useEffect(() => {
     fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 8000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchAnalytics, 8000);
+    return () => clearInterval(iv);
   }, [fetchAnalytics]);
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-  const simulateFailure = async (amountRupees: number, reason: string) => {
+  const addPipelineCard = (key: string, title: string, detail: string, color: string, icon: string) => {
+    setPipelineCards(prev => [...prev, { key, title, detail, color, icon }]);
+  };
+
+  const handlePay = async () => {
+    if (simulateMode) {
+      await runSimulatedRecovery();
+    } else {
+      await runRealPayment();
+    }
+  };
+
+  const runRealPayment = async () => {
     setIsRecovering(true);
-    setPipelineResult(null);
-    setPipelineData({});
-
-    const amountPaise = amountRupees * 100;
-    const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
-
     setPipelineStage("detect");
-    setPipelineData({ payment_id: paymentId, amount: `₹${amountRupees.toLocaleString()}`, reason });
-    await delay(600);
+    setPipelineResult(null);
+    setPipelineCards([]);
 
-    setPipelineStage("diagnose");
-    setPipelineData(prev => ({ ...prev, stage_info: "AI agent evaluating recovery probability..." }));
+    const amountPaise = amount * 100;
+    addPipelineCard("init", "Payment Initiated", `₹${amount} via Razorpay Checkout`, "blue", "💳");
 
     try {
-      const response = await axios.post(`${API_BASE}/recoveries/execute`, {
+      const orderRes = await axios.post(`${API_BASE}/recoveries/create-order?amount=${amountPaise}`);
+      const { order_id, amount: orderAmount } = orderRes.data;
+
+      addPipelineCard("order", "Order Created", `Razorpay Order: ${order_id}`, "blue", "📦");
+
+      const rzpKey = "rzp_test_REPLACE_ME";
+
+      const options = {
+        key: rzpKey,
+        amount: orderAmount,
+        currency: "INR",
+        name: "RecoveryOS Demo",
+        description: "Test Payment for AI Recovery Demo",
+        order_id: order_id,
+        handler: function (response: any) {
+          setPipelineStage("result");
+          setPipelineResult("success");
+          addPipelineCard("success", "Payment Successful", `Payment ID: ${response.razorpay_payment_id}`, "green", "✅");
+          setIsRecovering(false);
+          fetchAnalytics();
+        },
+        modal: {
+          ondismiss: function () {
+            setPipelineStage("detect");
+            addPipelineCard("dismissed", "Checkout Dismissed", "Customer closed the payment window — triggering AI recovery", "amber", "⚠️");
+            triggerRecoveryFromDismissal(amountPaise);
+          },
+        },
+        theme: { color: "#2563eb" },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on("payment.failed", function (response: any) {
+        const reason = response.error?.description || "unknown_error";
+        setPipelineStage("detect");
+        addPipelineCard("failed", "Payment Failed", `Reason: ${reason}`, "red", "❌");
+        triggerRecoveryForPayment(amountPaise, "insufficient_funds");
+      });
+      rzp.open();
+    } catch (error: any) {
+      addPipelineCard("error", "Order Creation Failed", error.message || "Could not create Razorpay order", "red", "❌");
+      setPipelineStage("result");
+      setPipelineResult("error");
+      setIsRecovering(false);
+    }
+  };
+
+  const triggerRecoveryFromDismissal = async (amountPaise: number) => {
+    await triggerRecoveryForPayment(amountPaise, "checkout_abandoned");
+  };
+
+  const triggerRecoveryForPayment = async (amountPaise: number, reason: string) => {
+    const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
+    setPipelineStage("diagnose");
+    addPipelineCard("diagnose", "AI Agent Activated", "Gemini 2.5 Flash analyzing failure pattern...", "indigo", "🧠");
+    
+    try {
+      const res = await axios.post(`${API_BASE}/recoveries/execute`, {
         payment_id: paymentId,
-        customer_id: `cust_demo_${Math.random().toString(36).substring(2, 6)}`,
+        customer_id: `cust_${Math.random().toString(36).substring(2, 6)}`,
         amount: amountPaise,
         failure_reason: reason,
       });
-      const data = response.data;
+      const data = res.data;
 
+      await delay(400);
       setPipelineStage("policy");
-      setPipelineData(prev => ({ ...prev, action: data.action_type, stage_info: "Checking safety rules..." }));
-      await delay(500);
 
       if (data.status === "escalated") {
+        addPipelineCard("policy", "Policy: Human Review Required", data.message, "amber", "🛡️");
+        await delay(400);
         setPipelineStage("result");
         setPipelineResult("escalated");
-        setPipelineData(prev => ({
-          ...prev,
-          result_status: "ESCALATED",
-          message: data.message,
-          review_id: data.provider_reference,
-          stage_info: "Requires human approval",
-        }));
+        addPipelineCard("result", "Escalated to Review Queue", `Review ID: ${data.provider_reference?.slice(0, 20)}...`, "amber", "👤");
       } else if (data.status === "failed") {
+        addPipelineCard("policy", "Policy: Blocked", data.message, "red", "🛑");
+        await delay(300);
         setPipelineStage("result");
         setPipelineResult("blocked");
-        setPipelineData(prev => ({
-          ...prev,
-          result_status: "BLOCKED",
-          message: data.message,
-          stage_info: "Policy engine denied",
-        }));
+        addPipelineCard("result", "Recovery Stopped", "Stopping rule or policy violation", "red", "⏹️");
       } else {
-        setPipelineStage("execute");
-        setPipelineData(prev => ({ ...prev, stage_info: "Creating Razorpay retry order..." }));
+        addPipelineCard("policy", "Policy: Approved", "All safety checks passed", "green", "✅");
         await delay(400);
-
+        setPipelineStage("execute");
+        addPipelineCard("execute", "Razorpay Order Created", `Ref: ${data.provider_reference || data.execution_id.slice(0, 20)}`, "blue", "🔗");
+        await delay(300);
         setPipelineStage("result");
         setPipelineResult("success");
-        setPipelineData(prev => ({
-          ...prev,
-          result_status: "RECOVERED",
-          execution_id: data.execution_id,
-          provider_ref: data.provider_reference,
-          message: data.message,
-          stage_info: "Recovery order created",
-        }));
+        addPipelineCard("result", "Recovery Initiated", `Action: ${data.action_type}`, "green", "🎉");
       }
-
       fetchAnalytics();
     } catch (error: any) {
       setPipelineStage("result");
       setPipelineResult("error");
-      setPipelineData(prev => ({
-        ...prev,
-        result_status: "ERROR",
-        message: error.response?.data?.detail || error.message,
-        stage_info: "System error",
-      }));
+      addPipelineCard("error", "System Error", error.response?.data?.detail || error.message, "red", "💥");
     } finally {
       setIsRecovering(false);
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    simulateFailure(customAmountRupees, customReason);
+  const runSimulatedRecovery = async () => {
+    setIsRecovering(true);
+    setPipelineStage("detect");
+    setPipelineResult(null);
+    setPipelineCards([]);
+
+    const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
+    const amountPaise = amount * 100;
+    const reasonInfo = FAILURE_REASONS.find(r => r.value === failureReason);
+
+    addPipelineCard("detect", "Failure Detected", `${reasonInfo?.emoji} ${reasonInfo?.label} — ₹${amount} (${paymentId})`, "amber", "⚡");
+    await delay(500);
+
+    setPipelineStage("diagnose");
+    addPipelineCard("diagnose", "AI Agent Analyzing", "Gemini 2.5 Flash evaluating recovery probability...", "indigo", "🧠");
+
+    try {
+      const res = await axios.post(`${API_BASE}/recoveries/execute`, {
+        payment_id: paymentId,
+        customer_id: `cust_demo_${Math.random().toString(36).substring(2, 6)}`,
+        amount: amountPaise,
+        failure_reason: failureReason,
+      });
+      const data = res.data;
+
+      await delay(400);
+      setPipelineStage("policy");
+
+      if (data.status === "escalated") {
+        addPipelineCard("policy", "Policy: Requires Approval", data.message, "amber", "🛡️");
+        await delay(400);
+        setPipelineStage("result");
+        setPipelineResult("escalated");
+        addPipelineCard("result", "Escalated to Human Review", `Review: ${data.provider_reference?.slice(0, 20)}...`, "amber", "👤");
+      } else if (data.status === "failed") {
+        addPipelineCard("policy", "Policy: Blocked", data.message, "red", "🛑");
+        await delay(300);
+        setPipelineStage("result");
+        setPipelineResult("blocked");
+        addPipelineCard("result", "Recovery Denied", "Stopping rule triggered", "red", "⏹️");
+      } else {
+        addPipelineCard("policy", "Policy: Approved", "Safety boundary cleared", "green", "✅");
+        await delay(400);
+        setPipelineStage("execute");
+        addPipelineCard("execute", "Executing via Razorpay", `Order: ${data.provider_reference || "created"}`, "blue", "🔗");
+        await delay(300);
+        setPipelineStage("result");
+        setPipelineResult("success");
+        addPipelineCard("result", "Recovery Successful", `${data.action_type} → ${data.provider_reference || data.execution_id.slice(0, 16)}`, "green", "🎉");
+      }
+      fetchAnalytics();
+    } catch (error: any) {
+      setPipelineStage("result");
+      setPipelineResult("error");
+      addPipelineCard("error", "Error", error.response?.data?.detail || error.message, "red", "💥");
+    } finally {
+      setIsRecovering(false);
+    }
   };
 
   const toggleTxnAudit = async (paymentId: string) => {
-    if (expandedTxn === paymentId) {
-      setExpandedTxn(null);
-      return;
-    }
+    if (expandedTxn === paymentId) { setExpandedTxn(null); return; }
     setExpandedTxn(paymentId);
     if (!txnAudit[paymentId]) {
       try {
-        const response = await axios.get(`${API_BASE}/audit/${paymentId}`);
-        setTxnAudit(prev => ({ ...prev, [paymentId]: response.data }));
+        const res = await axios.get(`${API_BASE}/audit/${paymentId}`);
+        setTxnAudit(prev => ({ ...prev, [paymentId]: res.data }));
       } catch {
         setTxnAudit(prev => ({ ...prev, [paymentId]: { error: "No audit trail found" } }));
       }
     }
   };
 
-  const runBenchmarkSimulation = async () => {
+  const runBenchmark = async () => {
     setIsSimulating(true);
     try {
-      const response = await axios.post(`${API_BASE}/analytics/simulate-benchmark`);
-      setBenchmarkData(response.data);
-    } catch (error) {
-      console.error("Simulation failed", error);
-    } finally {
-      setIsSimulating(false);
-    }
+      const res = await axios.post(`${API_BASE}/analytics/simulate-benchmark`);
+      setBenchmarkData(res.data);
+    } catch { } finally { setIsSimulating(false); }
   };
 
   const fetchReviews = async () => {
     setReviewsLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/reviews?status=all`);
-      setReviews(response.data.reviews || []);
-    } catch (error) {
-      console.error("Failed to fetch reviews", error);
-    } finally {
-      setReviewsLoading(false);
-    }
+      const res = await axios.get(`${API_BASE}/reviews?status=all`);
+      setReviews(res.data.reviews || []);
+    } catch { } finally { setReviewsLoading(false); }
   };
 
-  const handleApprove = async (reviewId: string) => {
-    try {
-      await axios.post(`${API_BASE}/reviews/${reviewId}/approve`);
-      fetchReviews();
-      fetchAnalytics();
-    } catch (error) {
-      console.error("Approve failed", error);
-    }
+  const handleApprove = async (id: string) => {
+    try { await axios.post(`${API_BASE}/reviews/${id}/approve`); fetchReviews(); fetchAnalytics(); } catch { }
   };
 
-  const handleReject = async (reviewId: string) => {
-    try {
-      await axios.post(`${API_BASE}/reviews/${reviewId}/reject`);
-      fetchReviews();
-    } catch (error) {
-      console.error("Reject failed", error);
-    }
+  const handleReject = async (id: string) => {
+    try { await axios.post(`${API_BASE}/reviews/${id}/reject`); fetchReviews(); } catch { }
   };
 
   const fetchAuditTrail = async () => {
     if (!auditPaymentId.trim()) return;
     setAuditLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/audit/${auditPaymentId}`);
-      setAuditTrail(response.data);
-    } catch (error: any) {
-      setAuditTrail({ error: error.response?.data?.detail || "Not found" });
-    } finally {
-      setAuditLoading(false);
-    }
+      const res = await axios.get(`${API_BASE}/audit/${auditPaymentId}`);
+      setAuditTrail(res.data);
+    } catch (e: any) {
+      setAuditTrail({ error: e.response?.data?.detail || "Not found" });
+    } finally { setAuditLoading(false); }
   };
 
-  const getStageState = (stageKey: string) => {
-    const stageOrder = ["detect", "diagnose", "policy", "execute", "result"];
-    const currentIdx = stageOrder.indexOf(pipelineStage);
-    const thisIdx = stageOrder.indexOf(stageKey);
-
-    if (pipelineStage === "idle") return "idle";
-    if (thisIdx < currentIdx) return "complete";
-    if (thisIdx === currentIdx) return "active";
-    return "pending";
+  const cardColors: Record<string, string> = {
+    blue: "border-blue-200 bg-blue-50/80",
+    green: "border-emerald-200 bg-emerald-50/80",
+    amber: "border-amber-200 bg-amber-50/80",
+    red: "border-red-200 bg-red-50/80",
+    indigo: "border-indigo-200 bg-indigo-50/80",
   };
 
-  const stageColors: Record<string, string> = {
-    idle: "border-gray-700 bg-gray-900/50 text-gray-600",
-    pending: "border-gray-700 bg-gray-900/50 text-gray-600",
-    active: "border-blue-500 bg-blue-950/40 text-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.25)]",
-    complete: "border-green-600/60 bg-green-950/30 text-green-400",
-  };
-
-  const resultColors: Record<string, string> = {
-    success: "border-green-500 bg-green-950/40 text-green-400 shadow-[0_0_30px_rgba(34,197,94,0.25)]",
-    escalated: "border-amber-500 bg-amber-950/40 text-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.25)]",
-    blocked: "border-red-500 bg-red-950/40 text-red-400 shadow-[0_0_30px_rgba(239,68,68,0.25)]",
-    error: "border-red-500 bg-red-950/40 text-red-400 shadow-[0_0_30px_rgba(239,68,68,0.25)]",
+  const cardTextColors: Record<string, string> = {
+    blue: "text-blue-700",
+    green: "text-emerald-700",
+    amber: "text-amber-700",
+    red: "text-red-700",
+    indigo: "text-indigo-700",
   };
 
   const tabs = [
@@ -266,321 +339,351 @@ export default function RecoveryOSDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#060910] text-gray-100 font-sans selection:bg-blue-500/30">
-      <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 space-y-6">
+    <div className="min-h-screen bg-[#fafbfc]">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 space-y-5">
 
-        {/* Header */}
+        {/* ── HEADER ── */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3 rounded-2xl shadow-lg shadow-blue-900/30">
-                <Zap className="w-7 h-7 text-white" />
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2.5 rounded-xl shadow-md shadow-blue-200">
+                <Zap className="w-6 h-6 text-white" />
               </div>
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#060910] animate-pulse" />
+              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#fafbfc]" />
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-white to-gray-400 bg-clip-text text-transparent">
-                RecoveryOS
-              </h1>
-              <p className="text-blue-400/80 text-sm font-medium">Razorpay AI Buildathon · Track 03</p>
+              <h1 className="text-2xl font-bold tracking-tight text-gray-900">RecoveryOS</h1>
+              <p className="text-xs text-blue-600 font-medium">Razorpay AI Buildathon · Track 03</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1.5 rounded-lg text-xs font-medium">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              PostgreSQL Live
-            </div>
-            <div className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-xs font-medium">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              Live
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full">
               <CreditCard className="w-3 h-3" />
-              Razorpay Test Mode
-            </div>
+              Razorpay Test
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-full">
+              <Sparkles className="w-3 h-3" />
+              Gemini 2.5 Flash
+            </span>
           </div>
         </header>
 
-        {/* Navigation */}
-        <nav className="flex gap-1 bg-[#0A0E18] p-1 rounded-xl border border-gray-800/50">
-          {tabs.map((tab) => {
+        {/* ── NAV TABS ── */}
+        <nav className="flex gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+          {tabs.map(tab => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key as any);
-                  if (tab.key === "reviews") fetchReviews();
-                }}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
-                  ? "bg-[#141B2D] text-white shadow-sm border border-gray-700/50"
-                  : "text-gray-500 hover:text-gray-300"
-                  }`}
+                onClick={() => { setActiveTab(tab.key as any); if (tab.key === "reviews") fetchReviews(); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab.key
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3.5 h-3.5" />
                 {tab.label}
               </button>
             );
           })}
         </nav>
 
-        {/* ============ LIVE TAB ============ */}
+        {/* ═══════════ LIVE TAB ═══════════ */}
         {activeTab === "live" && (
-          <div className="space-y-6">
-            {/* Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+
+            {/* Metrics Row */}
+            <motion.div variants={{ show: stagger }} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {[
-                { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, color: "blue" },
-                { label: "Recovered", value: analytics?.successful_recoveries ?? "—", icon: CheckCircle, color: "green" },
-                { label: "Blocked", value: analytics?.failed_recoveries ?? "—", icon: XCircle, color: "red" },
-                { label: "Pending Review", value: analytics?.pending_reviews ?? "—", icon: ShieldAlert, color: "amber" },
-                { label: "Recovery Rate", value: `${analytics?.recovery_rate_percent ?? "—"}%`, icon: TrendingUp, color: "emerald" },
-              ].map((metric) => {
-                const Icon = metric.icon;
+                { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, iconColor: "text-blue-500", bg: "bg-blue-50" },
+                { label: "Recovered", value: analytics?.successful_recoveries ?? "—", icon: CheckCircle, iconColor: "text-emerald-500", bg: "bg-emerald-50" },
+                { label: "Blocked", value: analytics?.failed_recoveries ?? "—", icon: Ban, iconColor: "text-red-500", bg: "bg-red-50" },
+                { label: "In Review", value: analytics?.pending_reviews ?? "—", icon: ShieldAlert, iconColor: "text-amber-500", bg: "bg-amber-50" },
+                { label: "Recovery Rate", value: `${analytics?.recovery_rate_percent ?? "—"}%`, icon: TrendingUp, iconColor: "text-indigo-500", bg: "bg-indigo-50" },
+              ].map(m => {
+                const Icon = m.icon;
                 return (
                   <motion.div
-                    key={metric.label}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`bg-[#0C1120] p-4 rounded-xl border border-gray-800/60 relative overflow-hidden`}
+                    key={m.label}
+                    variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
+                    transition={spring}
+                    className="glass-card rounded-xl p-4"
                   >
-                    <div className={`absolute top-0 right-0 w-20 h-20 bg-${metric.color}-500/5 rounded-full blur-2xl -mr-6 -mt-6`} />
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon className={`w-3.5 h-3.5 text-${metric.color}-400`} />
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{metric.label}</span>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className={`w-7 h-7 rounded-lg ${m.bg} flex items-center justify-center`}>
+                        <Icon className={`w-3.5 h-3.5 ${m.iconColor}`} />
+                      </div>
+                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{m.label}</span>
                     </div>
-                    <p className="text-2xl font-bold text-white">{metric.value}</p>
+                    <p className="text-2xl font-bold text-gray-900">{m.value}</p>
                   </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
 
-            {/* Pipeline Visualization */}
-            <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 p-6 overflow-hidden">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recovery Pipeline</h2>
-              </div>
+            {/* ── Payment Card + Pipeline ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-              {/* Pipeline Stages */}
-              <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
-                {STAGES.map((stage, i) => {
-                  const Icon = stage.icon;
-                  const state = getStageState(stage.key);
-                  const isResultStage = stage.key === "result" && pipelineResult;
-                  const colorClass = isResultStage && state === "active"
-                    ? resultColors[pipelineResult!]
-                    : stageColors[state];
-
-                  return (
-                    <React.Fragment key={stage.key}>
-                      {i > 0 && (
-                        <div className="flex items-center px-1 flex-shrink-0">
-                          <motion.div
-                            initial={false}
-                            animate={{
-                              backgroundColor: state === "complete" || state === "active" ? "#22c55e" : "#1f2937",
-                              scaleX: state === "complete" ? 1 : state === "active" ? 0.6 : 0.3,
-                            }}
-                            className="w-8 h-0.5 rounded-full origin-left"
-                            transition={{ duration: 0.3 }}
-                          />
-                          <ArrowRight className={`w-3 h-3 flex-shrink-0 ${state === "complete" || state === "active" ? "text-green-500" : "text-gray-700"}`} />
-                        </div>
-                      )}
-                      <motion.div
-                        layout
-                        initial={false}
-                        animate={{
-                          scale: state === "active" ? 1.02 : 1,
-                        }}
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        className={`flex-1 min-w-[140px] p-4 rounded-xl border-2 transition-colors duration-500 ${colorClass}`}
+              {/* LEFT: Payment Card */}
+              <div className="lg:col-span-2">
+                <div className="payment-card">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="w-5 h-5 text-blue-300" />
+                      <span className="text-sm font-semibold text-blue-200">
+                        {simulateMode ? "Failure Simulation" : "Payment"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 uppercase">{simulateMode ? "Test" : "Real"}</span>
+                      <button
+                        onClick={() => setSimulateMode(!simulateMode)}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${simulateMode ? "bg-amber-500" : "bg-blue-500"}`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          {state === "active" && !isResultStage && (
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </motion.div>
-                          )}
-                          {state === "complete" && <CheckCircle className="w-4 h-4 text-green-400" />}
-                          {(state === "idle" || state === "pending") && <Icon className="w-4 h-4" />}
-                          {state === "active" && isResultStage && (
-                            pipelineResult === "success" ? <CheckCircle className="w-4 h-4" /> :
-                              pipelineResult === "escalated" ? <ShieldAlert className="w-4 h-4" /> :
-                                <XCircle className="w-4 h-4" />
-                          )}
-                          <span className="text-xs font-bold uppercase tracking-wider">{stage.label}</span>
-                        </div>
-                        <p className="text-[11px] opacity-70">
-                          {state === "active" ? (pipelineData.stage_info || stage.desc) : stage.desc}
-                        </p>
-                        {state === "active" && pipelineData.result_status && stage.key === "result" && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            className="mt-2 pt-2 border-t border-current/20"
-                          >
-                            <p className="text-xs font-bold">{pipelineData.result_status}</p>
-                            {pipelineData.provider_ref && (
-                              <p className="text-[10px] opacity-70 font-mono mt-0.5">Ref: {pipelineData.provider_ref}</p>
-                            )}
-                          </motion.div>
-                        )}
-                      </motion.div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+                        <motion.div
+                          layout
+                          transition={spring}
+                          className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm"
+                          style={{ left: simulateMode ? "calc(100% - 18px)" : "2px" }}
+                        />
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Quick Action Panel */}
-              <div className="mt-6 pt-5 border-t border-gray-800/60">
-                <form onSubmit={handleCustomSubmit} className="flex items-end gap-3 flex-wrap">
-                  <div className="flex-1 min-w-[140px]">
-                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Amount</label>
+                  {/* Card visual */}
+                  <div className="mb-6">
+                    <div className="flex gap-1 mb-4">
+                      {[...Array(4)].map((_, g) => (
+                        <div key={g} className="flex gap-1">
+                          {g < 3 ? (
+                            [...Array(4)].map((_, i) => (
+                              <span key={i} className="text-lg text-gray-400">•</span>
+                            ))
+                          ) : (
+                            <span className="text-lg text-white tracking-widest font-mono">4242</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase mb-0.5">Card Holder</p>
+                        <p className="text-sm text-white font-medium">Test User</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase mb-0.5">Expires</p>
+                        <p className="text-sm text-white font-medium">12/28</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Amount input */}
+                  <div className="mb-4">
+                    <label className="text-[10px] text-blue-200 uppercase font-semibold mb-1 block">Amount (₹)</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm font-medium">₹</span>
+                      <span className="absolute left-3 top-2.5 text-blue-300 font-medium text-lg">₹</span>
                       <input
                         type="number"
-                        value={customAmountRupees}
-                        onChange={(e) => setCustomAmountRupees(Number(e.target.value))}
-                        className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg pl-7 pr-3 py-2.5 text-sm focus:ring-1 focus:ring-blue-500/50 outline-none"
-                        required
+                        value={amount}
+                        onChange={e => setAmount(Number(e.target.value))}
+                        className="w-full bg-white/10 border border-white/20 text-white rounded-xl pl-8 pr-3 py-2.5 text-lg font-semibold focus:ring-2 focus:ring-blue-400/50 outline-none placeholder:text-gray-400"
                         min="1"
+                        required
                       />
                     </div>
                   </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Failure Reason</label>
-                    <select
-                      value={customReason}
-                      onChange={(e) => setCustomReason(e.target.value)}
-                      className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-blue-500/50 outline-none"
-                    >
-                      <option value="insufficient_funds">Insufficient Funds</option>
-                      <option value="temporary_network_timeout">Network Timeout</option>
-                      <option value="suspected_fraud">Suspected Fraud</option>
-                      <option value="card_expired">Card Expired</option>
-                    </select>
-                  </div>
+
+                  {/* Failure Reason (only in simulate mode) */}
+                  <AnimatePresence>
+                    {simulateMode && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mb-4 overflow-hidden"
+                      >
+                        <label className="text-[10px] text-amber-300 uppercase font-semibold mb-1 block">Failure Reason</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {FAILURE_REASONS.map(r => (
+                            <button
+                              key={r.value}
+                              onClick={() => setFailureReason(r.value)}
+                              className={`text-left px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                                failureReason === r.value
+                                  ? "bg-white/20 text-white border border-white/30"
+                                  : "bg-white/5 text-gray-300 border border-transparent hover:bg-white/10"
+                              }`}
+                            >
+                              <span className="mr-1">{r.emoji}</span> {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Pay Button */}
                   <button
-                    type="submit"
-                    disabled={isRecovering}
-                    className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-2.5 px-6 rounded-lg transition-all disabled:opacity-40 shadow-lg shadow-blue-900/30 text-sm"
+                    onClick={handlePay}
+                    disabled={isRecovering || amount <= 0}
+                    className="w-full flex items-center justify-center gap-2 bg-white text-blue-700 font-bold py-3 px-4 rounded-xl transition-all hover:bg-blue-50 disabled:opacity-40 shadow-lg text-base"
                   >
-                    {isRecovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                    {isRecovering ? "Recovering..." : "Trigger Recovery"}
+                    {isRecovering ? (
+                      <><RefreshCw className="w-5 h-5 animate-spin" /> Processing...</>
+                    ) : simulateMode ? (
+                      <><AlertTriangle className="w-5 h-5" /> Simulate Failure — ₹{amount}</>
+                    ) : (
+                      <><Lock className="w-5 h-5" /> Pay ₹{amount.toLocaleString()}</>
+                    )}
                   </button>
-                  {pipelineStage !== "idle" && !isRecovering && (
-                    <button
-                      type="button"
-                      onClick={() => { setPipelineStage("idle"); setPipelineResult(null); setPipelineData({}); }}
-                      className="text-gray-500 hover:text-gray-300 text-xs underline py-2.5"
-                    >
-                      Reset
-                    </button>
+
+                  {!simulateMode && (
+                    <p className="text-[10px] text-blue-300/60 text-center mt-2">Opens Razorpay Checkout (Test Mode)</p>
                   )}
-                </form>
+                </div>
+              </div>
+
+              {/* RIGHT: Animated Pipeline */}
+              <div className="lg:col-span-3">
+                <div className="glass-card rounded-2xl p-5 min-h-[420px] flex flex-col">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recovery Pipeline</h3>
+                    {pipelineStage !== "idle" && !isRecovering && (
+                      <button
+                        onClick={() => { setPipelineStage("idle"); setPipelineResult(null); setPipelineCards([]); }}
+                        className="ml-auto text-[10px] text-gray-400 hover:text-gray-600 underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {pipelineStage === "idle" ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                      <motion.div
+                        animate={{ y: [0, -6, 0] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        <CircleDollarSign className="w-12 h-12 text-gray-300 mb-3" />
+                      </motion.div>
+                      <p className="text-sm font-medium text-gray-500">Make a payment to see the pipeline in action</p>
+                      <p className="text-xs text-gray-400 mt-1">Toggle "Test" mode to simulate specific failures</p>
+                    </div>
+                  ) : (
+                    <div className="flex-1 space-y-2 overflow-y-auto">
+                      <AnimatePresence mode="popLayout">
+                        {pipelineCards.map((card, i) => (
+                          <motion.div
+                            key={`${card.key}-${i}`}
+                            initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ ...spring, delay: 0.05 }}
+                            className={`flex items-start gap-3 p-3 rounded-xl border ${cardColors[card.color] || cardColors.blue}`}
+                          >
+                            <span className="text-xl flex-shrink-0 mt-0.5">{card.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold ${cardTextColors[card.color] || "text-gray-700"}`}>
+                                {card.title}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5 break-all">{card.detail}</p>
+                            </div>
+                            {i === pipelineCards.length - 1 && isRecovering && (
+                              <RefreshCw className="w-4 h-4 text-gray-400 animate-spin flex-shrink-0 mt-1" />
+                            )}
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+
+                      {/* Final result badge */}
+                      <AnimatePresence>
+                        {pipelineResult && !isRecovering && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={spring}
+                            className={`mt-3 p-3 rounded-xl text-center font-semibold text-sm ${
+                              pipelineResult === "success" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                              pipelineResult === "escalated" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                              "bg-red-100 text-red-800 border border-red-200"
+                            }`}
+                          >
+                            {pipelineResult === "success" && "✅ Recovery pipeline completed successfully"}
+                            {pipelineResult === "escalated" && "🔶 Escalated to human review queue"}
+                            {pipelineResult === "blocked" && "🛑 Blocked by policy engine"}
+                            {pipelineResult === "error" && "❌ Pipeline encountered an error"}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Recent Transactions Table */}
-            <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800/60 flex items-center justify-between">
+            {/* ── Recent Transactions ── */}
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-500" />
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recent Transactions</h2>
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recent Transactions</h3>
                 </div>
-                <span className="text-xs text-gray-600">{recentTxns.length} records</span>
+                <span className="text-[10px] text-gray-400">{recentTxns.length} records</span>
               </div>
 
               {recentTxns.length === 0 ? (
-                <div className="py-16 text-center text-gray-600">
-                  <Database className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">No transactions yet. Trigger a recovery above to see it here.</p>
+                <div className="py-12 text-center text-gray-400">
+                  <Database className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">No transactions yet</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-800/40">
-                  {recentTxns.map((txn) => {
-                    const isExpanded = expandedTxn === txn.payment_id;
-                    const statusColors: Record<string, string> = {
-                      STARTED: "bg-green-500/10 text-green-400 border-green-500/20",
-                      SUCCEEDED: "bg-green-500/10 text-green-400 border-green-500/20",
-                      FAILED: "bg-red-500/10 text-red-400 border-red-500/20",
+                <div className="divide-y divide-gray-100">
+                  {recentTxns.map(txn => {
+                    const isExp = expandedTxn === txn.payment_id;
+                    const sc: Record<string, string> = {
+                      STARTED: "bg-emerald-100 text-emerald-700",
+                      SUCCEEDED: "bg-emerald-100 text-emerald-700",
+                      FAILED: "bg-red-100 text-red-700",
                     };
-                    const statusColor = statusColors[txn.status] || "bg-gray-500/10 text-gray-400 border-gray-500/20";
-
                     return (
                       <div key={txn.execution_id}>
                         <button
                           onClick={() => toggleTxnAudit(txn.payment_id)}
-                          className="w-full px-6 py-3.5 flex items-center gap-4 hover:bg-[#0E1326] transition-colors text-left"
+                          className="w-full px-5 py-3 flex items-center gap-3 hover:bg-gray-50/80 transition text-left"
                         >
-                          <div className="w-5 flex-shrink-0">
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-gray-500" />
-                            )}
-                          </div>
-                          <span className="text-xs font-mono text-gray-400 w-28 flex-shrink-0">{txn.payment_id}</span>
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${statusColor} flex-shrink-0`}>
-                            {txn.status}
-                          </span>
+                          {isExp ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
+                          <span className="text-xs font-mono text-gray-500 w-24 flex-shrink-0">{txn.payment_id}</span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${sc[txn.status] || "bg-gray-100 text-gray-600"}`}>{txn.status}</span>
                           <span className="text-xs text-gray-500 flex-1 truncate">{txn.message}</span>
-                          <span className="text-[10px] text-gray-600 flex-shrink-0">
-                            {txn.created_at ? new Date(txn.created_at).toLocaleTimeString() : ""}
-                          </span>
+                          <span className="text-[10px] text-gray-400 flex-shrink-0">{txn.created_at ? new Date(txn.created_at).toLocaleTimeString() : ""}</span>
                         </button>
-
                         <AnimatePresence>
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="px-6 pb-4 pl-16">
+                          {isExp && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                              <div className="px-5 pb-4 pl-14">
                                 {txnAudit[txn.payment_id]?.error ? (
-                                  <p className="text-xs text-gray-500 italic">{txnAudit[txn.payment_id].error}</p>
+                                  <p className="text-xs text-gray-400 italic">{txnAudit[txn.payment_id].error}</p>
                                 ) : txnAudit[txn.payment_id]?.trail ? (
-                                  <div className="relative pl-4 border-l border-gray-800">
-                                    {txnAudit[txn.payment_id].trail.map((entry: any, i: number) => {
-                                      const eventColors: Record<string, string> = {
-                                        failure_detected: "text-amber-400",
-                                        ai_diagnosis: "text-blue-400",
-                                        policy_decision: "text-indigo-400",
-                                        execution_succeeded: "text-green-400",
-                                        execution_failed: "text-red-400",
-                                        escalated_to_review: "text-amber-400",
-                                        review_approved: "text-green-400",
-                                        review_rejected: "text-red-400",
-                                        stopping_rule_triggered: "text-red-400",
-                                      };
+                                  <div className="relative pl-4 border-l-2 border-gray-200 space-y-2">
+                                    {txnAudit[txn.payment_id].trail.map((e: any, i: number) => {
+                                      const ec: Record<string, string> = { failure_detected: "text-amber-600", ai_diagnosis: "text-blue-600", policy_decision: "text-indigo-600", execution_succeeded: "text-emerald-600", execution_failed: "text-red-600", escalated_to_review: "text-amber-600", review_approved: "text-emerald-600", review_rejected: "text-red-600", stopping_rule_triggered: "text-red-600" };
                                       return (
-                                        <div key={i} className="relative pb-3 last:pb-0">
-                                          <div className="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full bg-[#0A0E18] border-2 border-gray-600" />
-                                          <div className="flex items-baseline gap-2">
-                                            <span className={`text-[11px] font-semibold ${eventColors[entry.event_type] || "text-gray-400"}`}>
-                                              {entry.event_type.replace(/_/g, " ")}
-                                            </span>
-                                            <span className="text-[10px] text-gray-600">
-                                              {entry.created_at ? new Date(entry.created_at).toLocaleTimeString() : ""}
-                                            </span>
-                                          </div>
-                                          <pre className="text-[10px] text-gray-500 mt-0.5 font-mono whitespace-pre-wrap break-all">
-                                            {JSON.stringify(entry.data, null, 1)}
-                                          </pre>
+                                        <div key={i} className="relative">
+                                          <div className="absolute -left-[13px] top-1.5 w-2 h-2 rounded-full bg-white border-2 border-gray-300" />
+                                          <p className={`text-[11px] font-semibold ${ec[e.event_type] || "text-gray-500"}`}>{e.event_type.replace(/_/g, " ")}</p>
+                                          <pre className="text-[10px] text-gray-400 mt-0.5 font-mono whitespace-pre-wrap break-all bg-gray-50 p-2 rounded">{JSON.stringify(e.data, null, 1)}</pre>
                                         </div>
                                       );
                                     })}
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
-                                    Loading audit trail...
-                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-gray-400"><RefreshCw className="w-3 h-3 animate-spin" /> Loading...</div>
                                 )}
                               </div>
                             </motion.div>
@@ -592,163 +695,111 @@ export default function RecoveryOSDashboard() {
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {/* ============ BENCHMARK TAB ============ */}
+        {/* ═══════════ BENCHMARK TAB ═══════════ */}
         {activeTab === "benchmark" && (
-          <div className="bg-[#0A0E18] p-8 rounded-2xl border border-gray-800/60">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <BarChart3 className="w-7 h-7 text-blue-500" />
-                <div>
-                  <h2 className="text-xl font-bold text-white">50,000 Event Evaluation</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Synthetic batch processed through Policy Engine</p>
-                </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BarChart3 className="w-6 h-6 text-blue-500" /> 50,000 Event Evaluation</h2>
+                <p className="text-xs text-gray-400 mt-1">Synthetic batch processed through Policy Engine</p>
               </div>
-              <button
-                onClick={runBenchmarkSimulation}
-                disabled={isSimulating}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50"
-              >
+              <button onClick={runBenchmark} disabled={isSimulating} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
                 {isSimulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 {isSimulating ? "Running..." : "Run Simulation"}
               </button>
             </div>
 
             {!benchmarkData && !isSimulating && (
-              <div className="py-20 text-center text-gray-600">
-                <Database className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <div className="py-16 text-center text-gray-400">
+                <Database className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm">Run simulation to evaluate against 50k synthetic payment failures</p>
               </div>
             )}
 
             {isSimulating && (
-              <div className="py-20 text-center text-blue-400">
-                <RefreshCw className="w-10 h-10 mx-auto mb-3 animate-spin opacity-50" />
+              <div className="py-16 text-center text-blue-500">
+                <RefreshCw className="w-10 h-10 mx-auto mb-3 animate-spin text-blue-400" />
                 <p className="animate-pulse text-sm">Processing events through Policy Engine...</p>
               </div>
             )}
 
             {benchmarkData && !isSimulating && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
                   {[
-                    { label: "Baseline", value: `₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}`, color: "gray" },
-                    { label: "AI Recovery", value: `₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}`, color: "green" },
-                    { label: "Uplift", value: `+${benchmarkData.incremental_uplift_percent}%`, color: "blue" },
-                    { label: "Policy Blocks", value: benchmarkData.policy_blocks.toLocaleString(), color: "amber" },
-                    { label: "Unsafe Rate", value: `${benchmarkData.unsafe_action_rate}%`, color: "green" },
+                    { label: "Baseline", value: `₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}`, color: "text-gray-700" },
+                    { label: "AI Recovery", value: `₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}`, color: "text-emerald-600" },
+                    { label: "Uplift", value: `+${benchmarkData.incremental_uplift_percent}%`, color: "text-blue-600" },
+                    { label: "Policy Blocks", value: benchmarkData.policy_blocks.toLocaleString(), color: "text-amber-600" },
+                    { label: "Unsafe Rate", value: `${benchmarkData.unsafe_action_rate}%`, color: "text-emerald-600" },
                   ].map(m => (
-                    <div key={m.label} className="bg-[#060910] p-4 rounded-xl border border-gray-800/40">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{m.label}</p>
-                      <p className={`text-lg font-mono font-bold text-${m.color}-400`}>{m.value}</p>
+                    <div key={m.label} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{m.label}</p>
+                      <p className={`text-lg font-mono font-bold ${m.color}`}>{m.value}</p>
                     </div>
                   ))}
                 </div>
-
-                <div className="bg-[#040710] p-5 rounded-xl border border-gray-800/40 font-mono text-xs text-gray-400 overflow-x-auto whitespace-pre leading-relaxed">
-{`═══ RECOVERYOS EVALUATION ═══════════════════════════════════
-Events: ${benchmarkData.total_events.toLocaleString()}  |  Unsafe: ${benchmarkData.unsafe_action_rate}%  |  Blocks: ${benchmarkData.policy_blocks.toLocaleString()}
+                <div className="bg-gray-900 text-gray-300 p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto whitespace-pre">
+{`═══ RECOVERYOS EVALUATION ══════════════════════════════
+Events: ${benchmarkData.total_events.toLocaleString()}  |  Unsafe: ${benchmarkData.unsafe_action_rate}%
 
 Baseline (static rules):  ₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}
 RecoveryOS (AI agent):    ₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}
 Uplift:                   +${benchmarkData.incremental_uplift_percent}%
-
-Escalations to Review:    ${benchmarkData.escalations?.toLocaleString() ?? 'N/A'}
-══════════════════════════════════════════════════════════════`}
+Escalations:              ${benchmarkData.escalations?.toLocaleString() ?? "N/A"}
+Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
+════════════════════════════════════════════════════════`}
                 </div>
               </motion.div>
             )}
-          </div>
+          </motion.div>
         )}
 
-        {/* ============ REVIEWS TAB ============ */}
+        {/* ═══════════ REVIEWS TAB ═══════════ */}
         {activeTab === "reviews" && (
-          <div className="space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Shield className="w-6 h-6 text-amber-500" />
-                <h2 className="text-xl font-bold text-white">Escalation Queue</h2>
-              </div>
-              <button
-                onClick={fetchReviews}
-                disabled={reviewsLoading}
-                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${reviewsLoading ? "animate-spin" : ""}`} />
-                Refresh
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Shield className="w-6 h-6 text-amber-500" /> Escalation Queue</h2>
+              <button onClick={fetchReviews} disabled={reviewsLoading} className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 shadow-sm">
+                <RefreshCw className={`w-3.5 h-3.5 ${reviewsLoading ? "animate-spin" : ""}`} /> Refresh
               </button>
             </div>
 
             {reviews.length === 0 ? (
-              <div className="bg-[#0A0E18] rounded-2xl border border-gray-800/60 py-16 text-center text-gray-600">
-                <Shield className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <div className="glass-card rounded-2xl py-16 text-center text-gray-400">
+                <Shield className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm">No reviews in queue</p>
-                <p className="text-xs mt-1 text-gray-700">Suspicious or high-value transactions appear here</p>
+                <p className="text-xs mt-1 text-gray-400">Try simulating a "Suspected Fraud" failure</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {reviews.map((review) => (
-                  <motion.div
-                    key={review.review_id}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-[#0A0E18] rounded-xl border border-gray-800/60 p-5"
-                  >
+                {reviews.map(rev => (
+                  <motion.div key={rev.review_id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-xl p-5">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 space-y-3">
+                      <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${review.status === "pending" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                            review.status === "approved" ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                              "bg-red-500/10 text-red-400 border-red-500/20"
-                            }`}>
-                            {review.status}
-                          </span>
-                          <span className="text-[11px] text-gray-600 font-mono">{review.review_id.slice(0, 16)}...</span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            rev.status === "pending" ? "bg-amber-100 text-amber-700" :
+                            rev.status === "approved" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                          }`}>{rev.status}</span>
+                          <span className="text-[11px] text-gray-400 font-mono">{rev.review_id.slice(0, 16)}...</span>
                         </div>
-
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                          <div>
-                            <span className="text-gray-600 block text-[10px] uppercase">Payment</span>
-                            <span className="text-white font-mono">{review.payment_id}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600 block text-[10px] uppercase">Amount</span>
-                            <span className="text-white font-bold">₹{(review.amount / 100).toLocaleString()}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600 block text-[10px] uppercase">Action</span>
-                            <span className="text-blue-400">{review.action_type}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600 block text-[10px] uppercase">Confidence</span>
-                            <span className="text-white">{(review.ai_confidence * 100).toFixed(0)}%</span>
-                          </div>
+                          <div><span className="text-gray-400 block text-[10px] uppercase">Payment</span><span className="text-gray-800 font-mono">{rev.payment_id}</span></div>
+                          <div><span className="text-gray-400 block text-[10px] uppercase">Amount</span><span className="text-gray-900 font-bold">₹{(rev.amount / 100).toLocaleString()}</span></div>
+                          <div><span className="text-gray-400 block text-[10px] uppercase">Action</span><span className="text-blue-600">{rev.action_type}</span></div>
+                          <div><span className="text-gray-400 block text-[10px] uppercase">Confidence</span><span className="text-gray-800">{(rev.ai_confidence * 100).toFixed(0)}%</span></div>
                         </div>
-
-                        <p className="text-xs text-amber-300/70">{review.policy_reason}</p>
-                        {review.ai_diagnosis && (
-                          <p className="text-[11px] text-gray-500 leading-relaxed">{review.ai_diagnosis.slice(0, 200)}{review.ai_diagnosis.length > 200 ? "..." : ""}</p>
-                        )}
+                        <p className="text-xs text-amber-600">{rev.policy_reason}</p>
+                        {rev.ai_diagnosis && <p className="text-[11px] text-gray-500 leading-relaxed">{rev.ai_diagnosis.slice(0, 200)}{rev.ai_diagnosis.length > 200 ? "..." : ""}</p>}
                       </div>
-
-                      {review.status === "pending" && (
+                      {rev.status === "pending" && (
                         <div className="flex flex-col gap-1.5">
-                          <button
-                            onClick={() => handleApprove(review.review_id)}
-                            className="flex items-center gap-1 bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
-                          >
-                            <CheckCircle2 className="w-3 h-3" />
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleReject(review.review_id)}
-                            className="flex items-center gap-1 bg-red-600/70 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"
-                          >
-                            <XCircle className="w-3 h-3" />
-                            Reject
-                          </button>
+                          <button onClick={() => handleApprove(rev.review_id)} className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition shadow-sm"><CheckCircle2 className="w-3 h-3" /> Approve</button>
+                          <button onClick={() => handleReject(rev.review_id)} className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition"><XCircle className="w-3 h-3" /> Reject</button>
                         </div>
                       )}
                     </div>
@@ -756,83 +807,56 @@ Escalations to Review:    ${benchmarkData.escalations?.toLocaleString() ?? 'N/A'
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
-        {/* ============ AUDIT TAB ============ */}
+        {/* ═══════════ AUDIT TAB ═══════════ */}
         {activeTab === "audit" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Eye className="w-6 h-6 text-indigo-500" />
-              <h2 className="text-xl font-bold text-white">Payment Audit Trail</h2>
-            </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Eye className="w-6 h-6 text-indigo-500" /> Payment Audit Trail</h2>
 
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-600" />
-                <input
-                  type="text"
-                  value={auditPaymentId}
-                  onChange={(e) => setAuditPaymentId(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && fetchAuditTrail()}
-                  placeholder="Enter payment ID (e.g. pay_abc123)"
-                  className="w-full bg-[#0C1120] border border-gray-700/50 text-white rounded-lg pl-10 pr-3 py-2.5 text-sm focus:ring-1 focus:ring-indigo-500/50 outline-none font-mono"
-                />
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input type="text" value={auditPaymentId} onChange={e => setAuditPaymentId(e.target.value)} onKeyDown={e => e.key === "Enter" && fetchAuditTrail()} placeholder="Enter payment ID (e.g. pay_abc123)" className="w-full bg-white border border-gray-200 text-gray-900 rounded-xl pl-10 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none font-mono shadow-sm" />
               </div>
-              <button
-                onClick={fetchAuditTrail}
-                disabled={auditLoading || !auditPaymentId.trim()}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
-              >
-                {auditLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                Lookup
+              <button onClick={fetchAuditTrail} disabled={auditLoading || !auditPaymentId.trim()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-50 shadow-sm">
+                {auditLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
               </button>
             </div>
 
-            {auditTrail?.error && (
-              <div className="bg-red-950/20 border border-red-900/30 text-red-300 p-3 rounded-lg text-sm">
-                {auditTrail.error}
-              </div>
-            )}
+            {auditTrail?.error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm">{auditTrail.error}</div>}
 
             {auditTrail?.trail && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-[#0A0E18] rounded-xl border border-gray-800/60 p-6">
-                <p className="text-xs text-gray-500 mb-4">{auditTrail.total_entries} events for <span className="text-white font-mono">{auditTrail.payment_id}</span></p>
-
-                <div className="relative pl-4 border-l-2 border-gray-800 space-y-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-xl p-5">
+                <p className="text-xs text-gray-400 mb-4">{auditTrail.total_entries} events for <span className="text-gray-800 font-mono font-semibold">{auditTrail.payment_id}</span></p>
+                <div className="relative pl-4 border-l-2 border-gray-200 space-y-3">
                   {auditTrail.trail.map((entry: any, i: number) => {
                     const iconMap: Record<string, { icon: any; color: string }> = {
                       failure_detected: { icon: AlertTriangle, color: "text-amber-500" },
-                      ai_diagnosis: { icon: Activity, color: "text-blue-400" },
-                      policy_decision: { icon: Shield, color: "text-indigo-400" },
-                      execution_started: { icon: Play, color: "text-cyan-400" },
-                      execution_succeeded: { icon: CheckCircle, color: "text-green-400" },
-                      execution_failed: { icon: XCircle, color: "text-red-400" },
-                      escalated_to_review: { icon: ShieldAlert, color: "text-amber-400" },
-                      review_approved: { icon: CheckCircle2, color: "text-green-400" },
-                      review_rejected: { icon: XCircle, color: "text-red-400" },
-                      stopping_rule_triggered: { icon: Clock, color: "text-red-400" },
+                      ai_diagnosis: { icon: Activity, color: "text-blue-500" },
+                      policy_decision: { icon: Shield, color: "text-indigo-500" },
+                      execution_started: { icon: Play, color: "text-cyan-500" },
+                      execution_succeeded: { icon: CheckCircle, color: "text-emerald-500" },
+                      execution_failed: { icon: XCircle, color: "text-red-500" },
+                      escalated_to_review: { icon: ShieldAlert, color: "text-amber-500" },
+                      review_approved: { icon: CheckCircle2, color: "text-emerald-500" },
+                      review_rejected: { icon: XCircle, color: "text-red-500" },
+                      stopping_rule_triggered: { icon: Clock, color: "text-red-500" },
                     };
-                    const config = iconMap[entry.event_type] || { icon: Activity, color: "text-gray-400" };
-                    const Icon = config.icon;
-
+                    const conf = iconMap[entry.event_type] || { icon: Activity, color: "text-gray-400" };
+                    const Icon = conf.icon;
                     return (
                       <div key={i} className="relative">
-                        <div className={`absolute -left-[23px] top-0.5 w-4 h-4 rounded-full bg-[#0A0E18] border-2 border-gray-700 flex items-center justify-center`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${config.color.replace("text-", "bg-")}`} />
+                        <div className="absolute -left-[21px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">
+                          <Icon className={`w-2.5 h-2.5 ${conf.color}`} />
                         </div>
                         <div className="ml-2">
                           <div className="flex items-baseline gap-2 mb-1">
-                            <span className={`text-xs font-semibold ${config.color}`}>
-                              {entry.event_type.replace(/_/g, " ")}
-                            </span>
-                            <span className="text-[10px] text-gray-600">
-                              {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}
-                            </span>
+                            <span className={`text-xs font-semibold ${conf.color}`}>{entry.event_type.replace(/_/g, " ")}</span>
+                            <span className="text-[10px] text-gray-400">{entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}</span>
                           </div>
-                          <pre className="text-[11px] text-gray-500 font-mono bg-[#060910] p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
-                            {JSON.stringify(entry.data, null, 2)}
-                          </pre>
+                          <pre className="text-[11px] text-gray-500 font-mono bg-gray-50 p-2 rounded-lg overflow-x-auto whitespace-pre-wrap break-all border border-gray-100">{JSON.stringify(entry.data, null, 2)}</pre>
                         </div>
                       </div>
                     );
@@ -842,13 +866,13 @@ Escalations to Review:    ${benchmarkData.escalations?.toLocaleString() ?? 'N/A'
             )}
 
             {!auditTrail && (
-              <div className="bg-[#0A0E18] rounded-xl border border-gray-800/60 py-16 text-center text-gray-600">
-                <Eye className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Enter a payment ID to view its complete audit trail</p>
-                <p className="text-[11px] mt-1 text-gray-700">detection → AI diagnosis → policy → execution → reconciliation</p>
+              <div className="glass-card rounded-xl py-16 text-center text-gray-400">
+                <Eye className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm">Enter a payment ID to trace its full recovery journey</p>
+                <p className="text-[11px] mt-1 text-gray-400">detection → AI diagnosis → policy → execution → reconciliation</p>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
       </div>

@@ -69,6 +69,17 @@ When Razorpay sends `payment.captured`, our webhook handler verifies the signatu
 
 ---
 
+## Documentation Suite
+
+We have documented the entire architecture, evaluation methodology, and compliance guardrails of the system:
+- [Architecture & Truth Model](docs/ARCHITECTURE.md)
+- [Methodology & 50k Benchmark](docs/METHODOLOGY.md)
+- [Compliance, Gates & Stops](docs/COMPLIANCE.md)
+- [Failure Taxonomy & Action Verbs](domain/policy/taxonomy.yaml)
+- [Demo Pitch Script](docs/DEMO.md)
+
+---
+
 ## What Broke, and How I Fixed It
 
 1. **Circular import death spiral**: `RecoveryAuthorization` was defined in two modules. The orchestrator imported from `authorization.py` which imported from `service.py` which imported from `execution/` which imported `authorization.py`. Fixed by making `service.py` the canonical source and turning `authorization.py` into a re-export shim.

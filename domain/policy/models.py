@@ -20,6 +20,8 @@ class PolicyContext:
     suspicious: bool
     first_failure_at: Optional[datetime] = None
     customer_attempts_today: int = 0
+    is_contact_action: bool = False
+    contact_count: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.action_type, RecoveryActionType):
@@ -40,5 +42,10 @@ class PolicyContext:
         if self.customer_attempts_today < 0:
             raise ValueError(
                 "Customer attempts today cannot be negative"
+            )
+
+        if self.contact_count < 0:
+            raise ValueError(
+                "Contact count cannot be negative"
             )
 

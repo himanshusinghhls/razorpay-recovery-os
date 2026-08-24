@@ -1,0 +1,126 @@
+# taxonomy.yaml — Failure Classification & Recovery Policy
+#
+# Design principle:
+#   The AI Agent proposes recovery actions based on its diagnosis.
+#   This taxonomy defines the HARD BOUNDARIES the Policy Engine enforces.
+#   The AI cannot invent categories, verbs, or bypass these rules.
+#
+# Categories:
+#   time_shiftable  → Funds arrive later (e.g., salary day); wait and retry
+#   transient       → Rail/gateway glitch; retry soon, don't alarm the payer
+#   dead_instrument → Card/mandate broken; zero retries; one clear fix path
+#   prohibited      → Never automate money movement; escalate to human only
+#   ambiguous       → Unclear; conservative single retry + optional link
+
+version: "2026-08-24-v2"
+
+classes:
+  insufficient_funds:
+    category: time_shiftable
+    recovery_class: RETRY_FIXABLE
+    default_action: retry_payment
+    allow_contact: false
+    max_retries: 2
+    reason_code: NSF_SALARY_WINDOW
+    ai_recovery_probability: 0.72
+    notes: "Wait for salary-like credit window; do not spam the customer."
+
+  temporary_network_timeout:
+    category: transient
+    recovery_class: RETRY_FIXABLE
+    default_action: retry_payment
+    allow_contact: false
+    max_retries: 1
+    reason_code: TRANSIENT_NETWORK_RETRY
+    ai_recovery_probability: 0.88
+    notes: "Network/PSP blip — retry soon, stay silent."
+
+  gateway_timeout:
+    category: transient
+    recovery_class: RETRY_FIXABLE
+    default_action: retry_payment
+    allow_contact: false
+    max_retries: 1
+    reason_code: TIMEOUT_RECONCILE_RETRY
+    ai_recovery_probability: 0.85
+    notes: "In production: reconcile payment status before retry to prevent double-charge."
+
+  card_expired:
+    category: dead_instrument
+    recovery_class: CUSTOMER_ACTION
+    default_action: send_payment_link
+    allow_contact: true
+    max_retries: 0
+    reason_code: DEAD_CARD_LINK
+    ai_recovery_probability: 0.15
+    notes: "Zero retries. Send one payment link for new card."
+
+  token_invalid:
+    category: dead_instrument
+    recovery_class: CUSTOMER_ACTION
+    default_action: send_payment_link
+    allow_contact: true
+    max_retries: 0
+    reason_code: DEAD_TOKEN_LINK
+    ai_recovery_probability: 0.12
+    notes: "Token deprovisioned — send re-tokenization link."
+
+  mandate_revoked:
+    category: dead_instrument
+    recovery_class: CUSTOMER_ACTION
+    default_action: send_payment_link
+    allow_contact: true
+    max_retries: 0
+    reason_code: DEAD_MANDATE_UPDATE
+    ai_recovery_probability: 0.10
+    notes: "Never debit a revoked mandate. Offer re-mandate once."
+
+  suspected_fraud:
+    category: prohibited
+    recovery_class: PROHIBITED
+    default_action: escalate_human
+    allow_contact: false
+    max_retries: 0
+    reason_code: RISK_ESCALATE
+    ai_recovery_probability: 0.0
+    notes: "No automated retry. Human review only."
+
+  checkout_abandoned:
+    category: ambiguous
+    recovery_class: AMBIGUOUS
+    default_action: send_payment_link
+    allow_contact: true
+    max_retries: 0
+    reason_code: ABANDONED_CHECKOUT_LINK
+    ai_recovery_probability: 0.35
+    notes: "Customer closed checkout — send a reminder link."
+
+  do_not_honour:
+    category: ambiguous
+    recovery_class: AMBIGUOUS
+    default_action: retry_payment
+    allow_contact: true
+    max_retries: 1
+    reason_code: DNH_SPACED_RETRY
+    ai_recovery_probability: 0.40
+    notes: "Ambiguous issuer decline. One spaced retry, then payment link if still failing."
+
+# Scoring knobs used by the AI Analyst Agent (Gemini 2.5 Flash).
+# These are NOT hardcoded — the AI uses structured outputs with
+# these probability estimates as its training signal.
+scoring:
+  base_by_category:
+    time_shiftable: 0.72
+    transient: 0.85
+    dead_instrument: 0.15
+    ambiguous: 0.40
+    prohibited: 0.00
+  fatigue_penalty_per_contact: 0.10
+  high_value_threshold_paise: 2500000
+
+# Closed set of action verbs the AI is allowed to propose.
+# The PolicyEngine.evaluate() rejects anything outside this set.
+allowed_actions:
+  - retry_payment
+  - send_payment_link
+  - escalate_human

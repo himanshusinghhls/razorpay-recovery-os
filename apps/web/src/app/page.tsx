@@ -151,14 +151,17 @@ export default function RecoveryOSDashboard() {
         if (localFailures > 2) {
           rzp.close();
           addPipelineCard("error", "Max Retries Exceeded", "Razorpay Checkout closed automatically after 3 failed attempts.", "red", <Ban className="w-5 h-5 text-red-500" />);
+          setPipelineResult("blocked");
+          return;
         }
 
         if (hasTriggeredRecovery) return;
         hasTriggeredRecovery = true;
         const reason = response.error?.description || "unknown_error";
+        const realPaymentId = response.error?.metadata?.payment_id;
         setPipelineStage("detect");
         addPipelineCard("failed", "Payment Failed", `Reason: ${reason}`, "red", <XCircle className="w-5 h-5 text-red-500" />);
-        triggerRecoveryForPayment(amountPaise, "insufficient_funds");
+        triggerRecoveryForPayment(amountPaise, "insufficient_funds", 0, realPaymentId);
       });
       rzp.open();
     } catch (error: any) {
@@ -173,8 +176,8 @@ export default function RecoveryOSDashboard() {
     await triggerRecoveryForPayment(amountPaise, "checkout_abandoned");
   };
 
-  const triggerRecoveryForPayment = async (amountPaise: number, reason: string, retryCount: number = 0) => {
-    const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
+  const triggerRecoveryForPayment = async (amountPaise: number, reason: string, retryCount: number = 0, realPaymentId?: string) => {
+    const paymentId = realPaymentId || `pay_${Math.random().toString(36).substring(2, 10)}`;
     setPipelineStage("diagnose");
     addPipelineCard("diagnose", "AI Agent Activated", "Gemini 2.5 Flash analyzing failure pattern...", "indigo", <Cpu className="w-5 h-5 text-indigo-500" />);
 
@@ -496,8 +499,8 @@ export default function RecoveryOSDashboard() {
                       <span className="absolute left-3 top-2.5 text-gray-500 font-medium text-lg">₹</span>
                       <input
                         type="number"
-                        value={amount}
-                        onChange={e => setAmount(Number(e.target.value))}
+                        value={amount === 0 ? '' : amount}
+                        onChange={e => setAmount(e.target.value === '' ? 0 : Number(e.target.value))}
                         className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl pl-8 pr-3 py-2.5 text-lg font-bold focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-gray-400 shadow-sm"
                         min="1"
                         required

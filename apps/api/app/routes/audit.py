@@ -68,3 +68,52 @@ async def get_recent_audit(
             for e in entries
         ],
     }
+
+
+from pydantic import BaseModel
+import uuid
+from domain.audit.models import AuditEventType, AuditEntry
+from domain.execution.models import ExecutionStatus
+from apps.api.app.db.models import ExecutionRecord
+
+class SuccessLogRequest(BaseModel):
+    payment_id: str
+    amount: int
+    customer_id: str = "cust_direct"
+
+@router.post("/log-success")
+async def log_success_audit(
+    request: SuccessLogRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Logs a successful original payment so it appears in the audit trail.
+    Also creates an ExecutionRecord so it appears in the Analytics dashboard.
+    """
+    repo = PostgresAuditRepository(session)
+    entry = AuditEntry(
+        payment_id=request.payment_id,
+        customer_id=request.customer_id,
+        event_type=AuditEventType.EXECUTION_SUCCEEDED,
+        data={
+            "amount": request.amount,
+            "status": "success",
+            "message": "Original payment succeeded. No recovery required."
+        }
+    )
+    await repo.save(entry)
+
+    # Also log execution record for analytics dashboard
+    exec_record = ExecutionRecord(
+        execution_id=f"exec_direct_{uuid.uuid4().hex[:8]}",
+        payment_id=request.payment_id,
+        customer_id=request.customer_id,
+        action_type="direct_success",
+        status=ExecutionStatus.SUCCEEDED,
+        message="Original payment succeeded.",
+        external_reference=request.payment_id,
+    )
+    session.add(exec_record)
+    await session.commit()
+
+    return {"status": "logged"}

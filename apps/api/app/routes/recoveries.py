@@ -309,6 +309,8 @@ async def get_execution(
     }
 
 
+from ..config import settings
+
 @router.post("/create-order")
 async def create_razorpay_order(
     request: Request,
@@ -336,6 +338,7 @@ async def create_razorpay_order(
             "amount": order.get("amount"),
             "currency": order.get("currency"),
             "receipt": receipt,
+            "key_id": settings.razorpay_key_id,
         }
     except Exception:
         import logging

@@ -8,7 +8,8 @@ import {
   Zap, Play, BarChart3, Database, Shield, Clock, Eye, XCircle,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   ArrowRight, CreditCard, TrendingUp, Search, Wallet,
-  CircleDollarSign, Lock, Sparkles, Ban, User
+  CircleDollarSign, Lock, Sparkles, Ban, User,
+  Link as LinkIcon, Cpu, ShieldCheck, Box, Package, WalletCards, StopCircle
 } from "lucide-react";
 
 const API_BASE = "http://127.0.0.1:8000/api/v1";
@@ -27,10 +28,10 @@ interface Transaction {
 }
 
 const FAILURE_REASONS = [
-  { value: "insufficient_funds", label: "Insufficient Funds", emoji: "💳" },
-  { value: "temporary_network_timeout", label: "Network Timeout", emoji: "🌐" },
-  { value: "suspected_fraud", label: "Suspected Fraud", emoji: "🚨" },
-  { value: "card_expired", label: "Card Expired", emoji: "📅" },
+  { value: "insufficient_funds", label: "Insufficient Funds", emoji: <WalletCards className="w-4 h-4" /> },
+  { value: "temporary_network_timeout", label: "Network Timeout", emoji: <Activity className="w-4 h-4" /> },
+  { value: "suspected_fraud", label: "Suspected Fraud", emoji: <ShieldAlert className="w-4 h-4" /> },
+  { value: "card_expired", label: "Card Expired", emoji: <Clock className="w-4 h-4" /> },
 ];
 
 const spring = { type: "spring", stiffness: 300, damping: 28 };
@@ -39,32 +40,26 @@ const stagger = { staggerChildren: 0.08, delayChildren: 0.1 };
 export default function RecoveryOSDashboard() {
   const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit">("live");
 
-  // Pipeline state
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
   const [pipelineResult, setPipelineResult] = useState<PipelineResult>(null);
-  const [pipelineCards, setPipelineCards] = useState<{ key: string; title: string; detail: string; color: string; icon: string }[]>([]);
+  const [pipelineCards, setPipelineCards] = useState<{ key: string; title: string; detail: string; color: string; icon: React.ReactNode }[]>([]);
   const [isRecovering, setIsRecovering] = useState(false);
 
-  // Payment form
   const [amount, setAmount] = useState<number>(499);
   const [simulateMode, setSimulateMode] = useState(false);
   const [failureReason, setFailureReason] = useState("insufficient_funds");
 
-  // Benchmark
   const [isSimulating, setIsSimulating] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
 
-  // Analytics
   const [analytics, setAnalytics] = useState<any>(null);
   const [recentTxns, setRecentTxns] = useState<Transaction[]>([]);
   const [expandedTxn, setExpandedTxn] = useState<string | null>(null);
   const [txnAudit, setTxnAudit] = useState<Record<string, any>>({});
 
-  // Reviews
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
-  // Audit
   const [auditPaymentId, setAuditPaymentId] = useState<string>("");
   const [auditTrail, setAuditTrail] = useState<any>(null);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -85,7 +80,7 @@ export default function RecoveryOSDashboard() {
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-  const addPipelineCard = (key: string, title: string, detail: string, color: string, icon: string) => {
+  const addPipelineCard = (key: string, title: string, detail: string, color: string, icon: React.ReactNode) => {
     setPipelineCards(prev => [...prev, { key, title, detail, color, icon }]);
   };
 
@@ -103,35 +98,46 @@ export default function RecoveryOSDashboard() {
     setPipelineResult(null);
     setPipelineCards([]);
 
+    let hasTriggeredRecovery = false;
     const amountPaise = amount * 100;
-    addPipelineCard("init", "Payment Initiated", `₹${amount} via Razorpay Checkout`, "blue", "💳");
+    addPipelineCard("init", "Payment Initiated", `₹${amount} via Razorpay Checkout`, "blue", <CreditCard className="w-5 h-5 text-blue-500" />);
 
     try {
       const orderRes = await axios.post(`${API_BASE}/recoveries/create-order?amount=${amountPaise}`);
-      const { order_id, amount: orderAmount } = orderRes.data;
+      const { order_id, amount: orderAmount, key_id } = orderRes.data;
 
-      addPipelineCard("order", "Order Created", `Razorpay Order: ${order_id}`, "blue", "📦");
-
-      const rzpKey = "rzp_test_REPLACE_ME";
+      addPipelineCard("order", "Order Created", `Razorpay Order: ${order_id}`, "blue", <Package className="w-5 h-5 text-blue-500" />);
 
       const options = {
-        key: rzpKey,
+        key: key_id,
         amount: orderAmount,
         currency: "INR",
         name: "RecoveryOS Demo",
         description: "Test Payment for AI Recovery Demo",
         order_id: order_id,
-        handler: function (response: any) {
+        handler: async function (response: any) {
+          if (hasTriggeredRecovery) return;
+          hasTriggeredRecovery = true;
           setPipelineStage("result");
           setPipelineResult("success");
-          addPipelineCard("success", "Payment Successful", `Payment ID: ${response.razorpay_payment_id}`, "green", "✅");
+          addPipelineCard("success", "Payment Successful", `Payment ID: ${response.razorpay_payment_id}`, "green", <CheckCircle2 className="w-5 h-5 text-emerald-500" />);
           setIsRecovering(false);
+
+          try {
+            await axios.post(`${API_BASE}/audit/log-success`, {
+              payment_id: response.razorpay_payment_id,
+              amount: amountPaise,
+            });
+          } catch { }
+
           fetchAnalytics();
         },
         modal: {
           ondismiss: function () {
+            if (hasTriggeredRecovery) return;
+            hasTriggeredRecovery = true;
             setPipelineStage("detect");
-            addPipelineCard("dismissed", "Checkout Dismissed", "Customer closed the payment window — triggering AI recovery", "amber", "⚠️");
+            addPipelineCard("dismissed", "Checkout Dismissed", "Customer closed the payment window — triggering AI recovery", "amber", <AlertTriangle className="w-5 h-5 text-amber-500" />);
             triggerRecoveryFromDismissal(amountPaise);
           },
         },
@@ -140,14 +146,16 @@ export default function RecoveryOSDashboard() {
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", function (response: any) {
+        if (hasTriggeredRecovery) return;
+        hasTriggeredRecovery = true;
         const reason = response.error?.description || "unknown_error";
         setPipelineStage("detect");
-        addPipelineCard("failed", "Payment Failed", `Reason: ${reason}`, "red", "❌");
+        addPipelineCard("failed", "Payment Failed", `Reason: ${reason}`, "red", <XCircle className="w-5 h-5 text-red-500" />);
         triggerRecoveryForPayment(amountPaise, "insufficient_funds");
       });
       rzp.open();
     } catch (error: any) {
-      addPipelineCard("error", "Order Creation Failed", error.message || "Could not create Razorpay order", "red", "❌");
+      addPipelineCard("error", "Order Creation Failed", error.message || "Could not create Razorpay order", "red", <XCircle className="w-5 h-5 text-red-500" />);
       setPipelineStage("result");
       setPipelineResult("error");
       setIsRecovering(false);
@@ -161,8 +169,8 @@ export default function RecoveryOSDashboard() {
   const triggerRecoveryForPayment = async (amountPaise: number, reason: string) => {
     const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
     setPipelineStage("diagnose");
-    addPipelineCard("diagnose", "AI Agent Activated", "Gemini 2.5 Flash analyzing failure pattern...", "indigo", "🧠");
-    
+    addPipelineCard("diagnose", "AI Agent Activated", "Gemini 2.5 Flash analyzing failure pattern...", "indigo", <Cpu className="w-5 h-5 text-indigo-500" />);
+
     try {
       const res = await axios.post(`${API_BASE}/recoveries/execute`, {
         payment_id: paymentId,
@@ -176,32 +184,32 @@ export default function RecoveryOSDashboard() {
       setPipelineStage("policy");
 
       if (data.status === "escalated") {
-        addPipelineCard("policy", "Policy: Human Review Required", data.message, "amber", "🛡️");
+        addPipelineCard("policy", "Policy: Human Review Required", data.message, "amber", <ShieldAlert className="w-5 h-5 text-amber-500" />);
         await delay(400);
         setPipelineStage("result");
         setPipelineResult("escalated");
-        addPipelineCard("result", "Escalated to Review Queue", `Review ID: ${data.provider_reference?.slice(0, 20)}...`, "amber", "👤");
+        addPipelineCard("result", "Escalated to Review Queue", `Review ID: ${data.provider_reference?.slice(0, 20)}...`, "amber", <User className="w-5 h-5 text-amber-500" />);
       } else if (data.status === "failed") {
-        addPipelineCard("policy", "Policy: Blocked", data.message, "red", "🛑");
+        addPipelineCard("policy", "Policy: Blocked", data.message, "red", <StopCircle className="w-5 h-5 text-red-500" />);
         await delay(300);
         setPipelineStage("result");
         setPipelineResult("blocked");
-        addPipelineCard("result", "Recovery Stopped", "Stopping rule or policy violation", "red", "⏹️");
+        addPipelineCard("result", "Recovery Stopped", "Stopping rule or policy violation", "red", <Ban className="w-5 h-5 text-red-500" />);
       } else {
-        addPipelineCard("policy", "Policy: Approved", "All safety checks passed", "green", "✅");
+        addPipelineCard("policy", "Policy: Approved", "All safety checks passed", "green", <ShieldCheck className="w-5 h-5 text-emerald-500" />);
         await delay(400);
         setPipelineStage("execute");
-        addPipelineCard("execute", "Razorpay Order Created", `Ref: ${data.provider_reference || data.execution_id.slice(0, 20)}`, "blue", "🔗");
+        addPipelineCard("execute", "Razorpay Order Created", `Ref: ${data.provider_reference || data.execution_id.slice(0, 20)}`, "blue", <LinkIcon className="w-5 h-5 text-blue-500" />);
         await delay(300);
         setPipelineStage("result");
         setPipelineResult("success");
-        addPipelineCard("result", "Recovery Initiated", `Action: ${data.action_type}`, "green", "🎉");
+        addPipelineCard("result", "Recovery Initiated", `Action: ${data.action_type}`, "green", <Sparkles className="w-5 h-5 text-emerald-500" />);
       }
       fetchAnalytics();
     } catch (error: any) {
       setPipelineStage("result");
       setPipelineResult("error");
-      addPipelineCard("error", "System Error", error.response?.data?.detail || error.message, "red", "💥");
+      addPipelineCard("error", "System Error", error.response?.data?.detail || error.message, "red", <XCircle className="w-5 h-5 text-red-500" />);
     } finally {
       setIsRecovering(false);
     }
@@ -217,11 +225,11 @@ export default function RecoveryOSDashboard() {
     const amountPaise = amount * 100;
     const reasonInfo = FAILURE_REASONS.find(r => r.value === failureReason);
 
-    addPipelineCard("detect", "Failure Detected", `${reasonInfo?.emoji} ${reasonInfo?.label} — ₹${amount} (${paymentId})`, "amber", "⚡");
+    addPipelineCard("detect", "Failure Detected", `₹${amount} (${paymentId})`, "amber", <AlertTriangle className="w-5 h-5 text-amber-500" />);
     await delay(500);
 
     setPipelineStage("diagnose");
-    addPipelineCard("diagnose", "AI Agent Analyzing", "Gemini 2.5 Flash evaluating recovery probability...", "indigo", "🧠");
+    addPipelineCard("diagnose", "AI Agent Analyzing", "Gemini 2.5 Flash evaluating recovery probability...", "indigo", <Cpu className="w-5 h-5 text-indigo-500" />);
 
     try {
       const res = await axios.post(`${API_BASE}/recoveries/execute`, {
@@ -236,32 +244,32 @@ export default function RecoveryOSDashboard() {
       setPipelineStage("policy");
 
       if (data.status === "escalated") {
-        addPipelineCard("policy", "Policy: Requires Approval", data.message, "amber", "🛡️");
+        addPipelineCard("policy", "Policy: Requires Approval", data.message, "amber", <ShieldAlert className="w-5 h-5 text-amber-500" />);
         await delay(400);
         setPipelineStage("result");
         setPipelineResult("escalated");
-        addPipelineCard("result", "Escalated to Human Review", `Review: ${data.provider_reference?.slice(0, 20)}...`, "amber", "👤");
+        addPipelineCard("result", "Escalated to Human Review", `Review: ${data.provider_reference?.slice(0, 20)}...`, "amber", <User className="w-5 h-5 text-amber-500" />);
       } else if (data.status === "failed") {
-        addPipelineCard("policy", "Policy: Blocked", data.message, "red", "🛑");
+        addPipelineCard("policy", "Policy: Blocked", data.message, "red", <StopCircle className="w-5 h-5 text-red-500" />);
         await delay(300);
         setPipelineStage("result");
         setPipelineResult("blocked");
-        addPipelineCard("result", "Recovery Denied", "Stopping rule triggered", "red", "⏹️");
+        addPipelineCard("result", "Recovery Denied", "Stopping rule triggered", "red", <Ban className="w-5 h-5 text-red-500" />);
       } else {
-        addPipelineCard("policy", "Policy: Approved", "Safety boundary cleared", "green", "✅");
+        addPipelineCard("policy", "Policy: Approved", "Safety boundary cleared", "green", <ShieldCheck className="w-5 h-5 text-emerald-500" />);
         await delay(400);
         setPipelineStage("execute");
-        addPipelineCard("execute", "Executing via Razorpay", `Order: ${data.provider_reference || "created"}`, "blue", "🔗");
+        addPipelineCard("execute", "Executing via Razorpay", `Order: ${data.provider_reference || "created"}`, "blue", <LinkIcon className="w-5 h-5 text-blue-500" />);
         await delay(300);
         setPipelineStage("result");
         setPipelineResult("success");
-        addPipelineCard("result", "Recovery Successful", `${data.action_type} → ${data.provider_reference || data.execution_id.slice(0, 16)}`, "green", "🎉");
+        addPipelineCard("result", "Recovery Successful", `${data.action_type} → ${data.provider_reference || data.execution_id.slice(0, 16)}`, "green", <Sparkles className="w-5 h-5 text-emerald-500" />);
       }
       fetchAnalytics();
     } catch (error: any) {
       setPipelineStage("result");
       setPipelineResult("error");
-      addPipelineCard("error", "Error", error.response?.data?.detail || error.message, "red", "💥");
+      addPipelineCard("error", "Error", error.response?.data?.detail || error.message, "red", <XCircle className="w-5 h-5 text-red-500" />);
     } finally {
       setIsRecovering(false);
     }
@@ -342,7 +350,6 @@ export default function RecoveryOSDashboard() {
     <div className="min-h-screen bg-[#fafbfc]">
       <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 space-y-5">
 
-        {/* ── HEADER ── */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -372,7 +379,6 @@ export default function RecoveryOSDashboard() {
           </div>
         </header>
 
-        {/* ── NAV TABS ── */}
         <nav className="flex gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -380,11 +386,10 @@ export default function RecoveryOSDashboard() {
               <button
                 key={tab.key}
                 onClick={() => { setActiveTab(tab.key as any); if (tab.key === "reviews") fetchReviews(); }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab.key
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {tab.label}
@@ -393,11 +398,9 @@ export default function RecoveryOSDashboard() {
           })}
         </nav>
 
-        {/* ═══════════ LIVE TAB ═══════════ */}
         {activeTab === "live" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
 
-            {/* Metrics Row */}
             <motion.div variants={{ show: stagger }} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {[
                 { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, iconColor: "text-blue-500", bg: "bg-blue-50" },
@@ -426,24 +429,22 @@ export default function RecoveryOSDashboard() {
               })}
             </motion.div>
 
-            {/* ── Payment Card + Pipeline ── */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-              {/* LEFT: Payment Card */}
               <div className="lg:col-span-2">
                 <div className="payment-card">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-2">
-                      <Wallet className="w-5 h-5 text-blue-300" />
-                      <span className="text-sm font-semibold text-blue-200">
+                      <Wallet className="w-5 h-5 text-blue-600" />
+                      <span className="text-sm font-bold text-gray-900">
                         {simulateMode ? "Failure Simulation" : "Payment"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 uppercase">{simulateMode ? "Test" : "Real"}</span>
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold">{simulateMode ? "Test" : "Real"}</span>
                       <button
                         onClick={() => setSimulateMode(!simulateMode)}
-                        className={`relative w-10 h-5 rounded-full transition-colors ${simulateMode ? "bg-amber-500" : "bg-blue-500"}`}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${simulateMode ? "bg-amber-500" : "bg-blue-600"}`}
                       >
                         <motion.div
                           layout
@@ -455,50 +456,47 @@ export default function RecoveryOSDashboard() {
                     </div>
                   </div>
 
-                  {/* Card visual */}
                   <div className="mb-6">
                     <div className="flex gap-1 mb-4">
                       {[...Array(4)].map((_, g) => (
                         <div key={g} className="flex gap-1">
                           {g < 3 ? (
                             [...Array(4)].map((_, i) => (
-                              <span key={i} className="text-lg text-gray-400">•</span>
+                              <span key={i} className="text-lg text-gray-300">•</span>
                             ))
                           ) : (
-                            <span className="text-lg text-white tracking-widest font-mono">4242</span>
+                            <span className="text-lg text-gray-800 tracking-widest font-mono font-medium">1221</span>
                           )}
                         </div>
                       ))}
                     </div>
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-[10px] text-gray-400 uppercase mb-0.5">Card Holder</p>
-                        <p className="text-sm text-white font-medium">Test User</p>
+                        <p className="text-[10px] text-gray-400 uppercase mb-0.5 font-semibold">Card Holder</p>
+                        <p className="text-sm text-gray-800 font-bold">Test User</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-gray-400 uppercase mb-0.5">Expires</p>
-                        <p className="text-sm text-white font-medium">12/28</p>
+                        <p className="text-[10px] text-gray-400 uppercase mb-0.5 font-semibold">Expires</p>
+                        <p className="text-sm text-gray-800 font-bold">12/27</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Amount input */}
                   <div className="mb-4">
-                    <label className="text-[10px] text-blue-200 uppercase font-semibold mb-1 block">Amount (₹)</label>
+                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block">Amount (₹)</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-blue-300 font-medium text-lg">₹</span>
+                      <span className="absolute left-3 top-2.5 text-gray-500 font-medium text-lg">₹</span>
                       <input
                         type="number"
                         value={amount}
                         onChange={e => setAmount(Number(e.target.value))}
-                        className="w-full bg-white/10 border border-white/20 text-white rounded-xl pl-8 pr-3 py-2.5 text-lg font-semibold focus:ring-2 focus:ring-blue-400/50 outline-none placeholder:text-gray-400"
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl pl-8 pr-3 py-2.5 text-lg font-bold focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-gray-400 shadow-sm"
                         min="1"
                         required
                       />
                     </div>
                   </div>
 
-                  {/* Failure Reason (only in simulate mode) */}
                   <AnimatePresence>
                     {simulateMode && (
                       <motion.div
@@ -507,17 +505,16 @@ export default function RecoveryOSDashboard() {
                         exit={{ height: 0, opacity: 0 }}
                         className="mb-4 overflow-hidden"
                       >
-                        <label className="text-[10px] text-amber-300 uppercase font-semibold mb-1 block">Failure Reason</label>
+                        <label className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 block">Failure Reason</label>
                         <div className="grid grid-cols-2 gap-1.5">
                           {FAILURE_REASONS.map(r => (
                             <button
                               key={r.value}
                               onClick={() => setFailureReason(r.value)}
-                              className={`text-left px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                                failureReason === r.value
-                                  ? "bg-white/20 text-white border border-white/30"
-                                  : "bg-white/5 text-gray-300 border border-transparent hover:bg-white/10"
-                              }`}
+                              className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${failureReason === r.value
+                                ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
+                                }`}
                             >
                               <span className="mr-1">{r.emoji}</span> {r.label}
                             </button>
@@ -527,11 +524,10 @@ export default function RecoveryOSDashboard() {
                     )}
                   </AnimatePresence>
 
-                  {/* Pay Button */}
                   <button
                     onClick={handlePay}
                     disabled={isRecovering || amount <= 0}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-blue-700 font-bold py-3 px-4 rounded-xl transition-all hover:bg-blue-50 disabled:opacity-40 shadow-lg text-base"
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3.5 px-4 rounded-xl transition-all hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-500/20 text-base"
                   >
                     {isRecovering ? (
                       <><RefreshCw className="w-5 h-5 animate-spin" /> Processing...</>
@@ -543,14 +539,13 @@ export default function RecoveryOSDashboard() {
                   </button>
 
                   {!simulateMode && (
-                    <p className="text-[10px] text-blue-300/60 text-center mt-2">Opens Razorpay Checkout (Test Mode)</p>
+                    <p className="text-[10px] text-gray-400 font-medium text-center mt-3">Opens Razorpay Checkout (Test Mode)</p>
                   )}
                 </div>
               </div>
 
-              {/* RIGHT: Animated Pipeline */}
               <div className="lg:col-span-3">
-                <div className="glass-card rounded-2xl p-5 min-h-[420px] flex flex-col">
+                <div className="glass-card rounded-2xl p-5 min-h-[420px] max-h-[500px] flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-2 h-2 rounded-full bg-blue-500" />
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recovery Pipeline</h3>
@@ -601,23 +596,23 @@ export default function RecoveryOSDashboard() {
                         ))}
                       </AnimatePresence>
 
-                      {/* Final result badge */}
                       <AnimatePresence>
                         {pipelineResult && !isRecovering && (
                           <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={spring}
-                            className={`mt-3 p-3 rounded-xl text-center font-semibold text-sm ${
-                              pipelineResult === "success" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                            className={`mt-3 p-3 rounded-xl text-center font-semibold text-sm ${pipelineResult === "success" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
                               pipelineResult === "escalated" ? "bg-amber-100 text-amber-800 border border-amber-200" :
-                              "bg-red-100 text-red-800 border border-red-200"
-                            }`}
+                                "bg-red-100 text-red-800 border border-red-200"
+                              }`}
                           >
-                            {pipelineResult === "success" && "✅ Recovery pipeline completed successfully"}
-                            {pipelineResult === "escalated" && "🔶 Escalated to human review queue"}
-                            {pipelineResult === "blocked" && "🛑 Blocked by policy engine"}
-                            {pipelineResult === "error" && "❌ Pipeline encountered an error"}
+                            <div className="flex items-center justify-center gap-2">
+                              {pipelineResult === "success" && <><CheckCircle2 className="w-5 h-5" /> Recovery pipeline completed successfully</>}
+                              {pipelineResult === "escalated" && <><ShieldAlert className="w-5 h-5" /> Escalated to human review queue</>}
+                              {pipelineResult === "blocked" && <><StopCircle className="w-5 h-5" /> Blocked by policy engine</>}
+                              {pipelineResult === "error" && <><XCircle className="w-5 h-5" /> Pipeline encountered an error</>}
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -627,7 +622,6 @@ export default function RecoveryOSDashboard() {
               </div>
             </div>
 
-            {/* ── Recent Transactions ── */}
             <div className="glass-card rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -643,7 +637,7 @@ export default function RecoveryOSDashboard() {
                   <p className="text-sm">No transactions yet</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
                   {recentTxns.map(txn => {
                     const isExp = expandedTxn === txn.payment_id;
                     const sc: Record<string, string> = {
@@ -698,7 +692,6 @@ export default function RecoveryOSDashboard() {
           </motion.div>
         )}
 
-        {/* ═══════════ BENCHMARK TAB ═══════════ */}
         {activeTab === "benchmark" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
@@ -743,7 +736,7 @@ export default function RecoveryOSDashboard() {
                   ))}
                 </div>
                 <div className="bg-gray-900 text-gray-300 p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto whitespace-pre">
-{`═══ RECOVERYOS EVALUATION ══════════════════════════════
+                  {`═══ RECOVERYOS EVALUATION ══════════════════════════════
 Events: ${benchmarkData.total_events.toLocaleString()}  |  Unsafe: ${benchmarkData.unsafe_action_rate}%
 
 Baseline (static rules):  ₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}
@@ -753,12 +746,24 @@ Escalations:              ${benchmarkData.escalations?.toLocaleString() ?? "N/A"
 Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
 ════════════════════════════════════════════════════════`}
                 </div>
+
+                <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-5">
+                  <h4 className="text-sm font-bold text-blue-900 flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-blue-600" /> What do these numbers mean?
+                  </h4>
+                  <ul className="text-xs text-blue-800 space-y-2.5 leading-relaxed">
+                    <li><strong className="text-blue-950 font-semibold">Baseline:</strong> The revenue a traditional payment gateway recovers using basic, "dumb" retries (e.g., just trying the card again).</li>
+                    <li><strong className="text-blue-950 font-semibold">AI Recovery:</strong> The revenue recovered by our intelligent agent. It understands the <em>context</em> of the failure and uses dynamic interventions (like sending an SMS link for network timeouts, or alerting a human for fraud).</li>
+                    <li><strong className="text-blue-950 font-semibold">Uplift:</strong> The percentage increase in money saved by using the AI Agent instead of static rules.</li>
+                    <li><strong className="text-blue-950 font-semibold">Policy Blocks:</strong> Actions the AI attempted that were blocked by our Safety Engine to prevent bad user experiences or compliance violations.</li>
+                    <li><strong className="text-blue-950 font-semibold">Unsafe Rate:</strong> The percentage of actions that violated core safety boundaries. <span className="font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">{benchmarkData.unsafe_action_rate}%</span> means the agent operated completely safely at scale.</li>
+                  </ul>
+                </div>
               </motion.div>
             )}
           </motion.div>
         )}
 
-        {/* ═══════════ REVIEWS TAB ═══════════ */}
         {activeTab === "reviews" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <div className="flex items-center justify-between">
@@ -781,10 +786,9 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                            rev.status === "pending" ? "bg-amber-100 text-amber-700" :
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${rev.status === "pending" ? "bg-amber-100 text-amber-700" :
                             rev.status === "approved" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-                          }`}>{rev.status}</span>
+                            }`}>{rev.status}</span>
                           <span className="text-[11px] text-gray-400 font-mono">{rev.review_id.slice(0, 16)}...</span>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
@@ -810,7 +814,6 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
           </motion.div>
         )}
 
-        {/* ═══════════ AUDIT TAB ═══════════ */}
         {activeTab === "audit" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Eye className="w-6 h-6 text-indigo-500" /> Payment Audit Trail</h2>

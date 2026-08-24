@@ -99,6 +99,7 @@ export default function RecoveryOSDashboard() {
     setPipelineCards([]);
 
     let hasTriggeredRecovery = false;
+    let localFailures = 0;
     const amountPaise = amount * 100;
     addPipelineCard("init", "Payment Initiated", `₹${amount} via Razorpay Checkout`, "blue", <CreditCard className="w-5 h-5 text-blue-500" />);
 
@@ -146,6 +147,12 @@ export default function RecoveryOSDashboard() {
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", function (response: any) {
+        localFailures++;
+        if (localFailures > 2) {
+          rzp.close();
+          addPipelineCard("error", "Max Retries Exceeded", "Razorpay Checkout closed automatically after 3 failed attempts.", "red", <Ban className="w-5 h-5 text-red-500" />);
+        }
+
         if (hasTriggeredRecovery) return;
         hasTriggeredRecovery = true;
         const reason = response.error?.description || "unknown_error";
@@ -166,7 +173,7 @@ export default function RecoveryOSDashboard() {
     await triggerRecoveryForPayment(amountPaise, "checkout_abandoned");
   };
 
-  const triggerRecoveryForPayment = async (amountPaise: number, reason: string) => {
+  const triggerRecoveryForPayment = async (amountPaise: number, reason: string, retryCount: number = 0) => {
     const paymentId = `pay_${Math.random().toString(36).substring(2, 10)}`;
     setPipelineStage("diagnose");
     addPipelineCard("diagnose", "AI Agent Activated", "Gemini 2.5 Flash analyzing failure pattern...", "indigo", <Cpu className="w-5 h-5 text-indigo-500" />);
@@ -177,6 +184,7 @@ export default function RecoveryOSDashboard() {
         customer_id: `cust_${Math.random().toString(36).substring(2, 6)}`,
         amount: amountPaise,
         failure_reason: reason,
+        retry_count: retryCount,
       });
       const data = res.data;
 
@@ -184,11 +192,11 @@ export default function RecoveryOSDashboard() {
       setPipelineStage("policy");
 
       if (data.status === "escalated") {
-        addPipelineCard("policy", "Policy: Human Review Required", data.message, "amber", <ShieldAlert className="w-5 h-5 text-amber-500" />);
+        addPipelineCard("policy", "Policy: Human Review Required", data.message, "red", <ShieldAlert className="w-5 h-5 text-red-500" />);
         await delay(400);
         setPipelineStage("result");
         setPipelineResult("escalated");
-        addPipelineCard("result", "Escalated to Review Queue", `Review ID: ${data.provider_reference?.slice(0, 20)}...`, "amber", <User className="w-5 h-5 text-amber-500" />);
+        addPipelineCard("result", "Escalated to Review Queue", `Review ID: ${data.provider_reference?.slice(0, 20)}...`, "red", <User className="w-5 h-5 text-red-500" />);
       } else if (data.status === "failed") {
         addPipelineCard("policy", "Policy: Blocked", data.message, "red", <StopCircle className="w-5 h-5 text-red-500" />);
         await delay(300);
@@ -244,11 +252,11 @@ export default function RecoveryOSDashboard() {
       setPipelineStage("policy");
 
       if (data.status === "escalated") {
-        addPipelineCard("policy", "Policy: Requires Approval", data.message, "amber", <ShieldAlert className="w-5 h-5 text-amber-500" />);
+        addPipelineCard("policy", "Policy: Requires Approval", data.message, "red", <ShieldAlert className="w-5 h-5 text-red-500" />);
         await delay(400);
         setPipelineStage("result");
         setPipelineResult("escalated");
-        addPipelineCard("result", "Escalated to Human Review", `Review: ${data.provider_reference?.slice(0, 20)}...`, "amber", <User className="w-5 h-5 text-amber-500" />);
+        addPipelineCard("result", "Escalated to Human Review", `Review: ${data.provider_reference?.slice(0, 20)}...`, "red", <User className="w-5 h-5 text-red-500" />);
       } else if (data.status === "failed") {
         addPipelineCard("policy", "Policy: Blocked", data.message, "red", <StopCircle className="w-5 h-5 text-red-500" />);
         await delay(300);
@@ -603,7 +611,7 @@ export default function RecoveryOSDashboard() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={spring}
                             className={`mt-3 p-3 rounded-xl text-center font-semibold text-sm ${pipelineResult === "success" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
-                              pipelineResult === "escalated" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                              pipelineResult === "escalated" ? "bg-red-100 text-red-800 border border-red-200" :
                                 "bg-red-100 text-red-800 border border-red-200"
                               }`}
                           >
@@ -842,7 +850,7 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
                       execution_started: { icon: Play, color: "text-cyan-500" },
                       execution_succeeded: { icon: CheckCircle, color: "text-emerald-500" },
                       execution_failed: { icon: XCircle, color: "text-red-500" },
-                      escalated_to_review: { icon: ShieldAlert, color: "text-amber-500" },
+                      escalated_to_review: { icon: ShieldAlert, color: "text-red-500" },
                       review_approved: { icon: CheckCircle2, color: "text-emerald-500" },
                       review_rejected: { icon: XCircle, color: "text-red-500" },
                       stopping_rule_triggered: { icon: Clock, color: "text-red-500" },

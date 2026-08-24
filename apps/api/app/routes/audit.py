@@ -103,7 +103,6 @@ async def log_success_audit(
     )
     await repo.save(entry)
 
-    # Also log execution record for analytics dashboard
     exec_record = ExecutionRecord(
         execution_id=f"exec_direct_{uuid.uuid4().hex[:8]}",
         payment_id=request.payment_id,

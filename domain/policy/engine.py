@@ -36,19 +36,18 @@ class RecoveryPolicyEngine:
     """
 
     MAX_RETRY_ATTEMPTS = 2
-    HIGH_VALUE_THRESHOLD = 2500000       # paise (₹25,000)
+    HIGH_VALUE_THRESHOLD = 2500000
     MAX_RECOVERY_WINDOW_HOURS = 72
     MAX_CUSTOMER_DAILY_ATTEMPTS = 5
-    CONTACT_WINDOW_START_IST = 9         # 09:00 IST
-    CONTACT_WINDOW_END_IST = 21          # 21:00 IST
-    MAX_CONTACT_FREQUENCY = 3            # max contacts per payment
+    CONTACT_WINDOW_START_IST = 9
+    CONTACT_WINDOW_END_IST = 21
+    MAX_CONTACT_FREQUENCY = 3
 
     def evaluate(
         self,
         context: PolicyContext,
     ) -> PolicyDecision:
 
-        # ── Gate 1: Amount sanity ──
         if context.amount <= 0:
             return PolicyDecision(
                 allowed=False,
@@ -56,7 +55,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ── Gate 2: Retry count sanity ──
         if context.retry_count < 0:
             return PolicyDecision(
                 allowed=False,
@@ -64,7 +62,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ── Gate 3: Max retry cap ──
         if context.retry_count >= self.MAX_RETRY_ATTEMPTS:
             return PolicyDecision(
                 allowed=False,
@@ -72,7 +69,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ── Gate 4: Fraud / suspicious activity ──
         if context.suspicious:
             return PolicyDecision(
                 allowed=False,
@@ -80,7 +76,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=True,
             )
 
-        # ── Gate 5: High-value threshold ──
         if context.amount >= self.HIGH_VALUE_THRESHOLD:
             return PolicyDecision(
                 allowed=False,
@@ -88,7 +83,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=True,
             )
 
-        # ── Gate 6: Recovery window expiry ──
         if context.first_failure_at is not None:
             now = datetime.now(timezone.utc)
             failure_time = context.first_failure_at
@@ -107,7 +101,6 @@ class RecoveryPolicyEngine:
                     requires_human_approval=False,
                 )
 
-        # ── Gate 7: Daily customer attempt cap ──
         if context.customer_attempts_today >= self.MAX_CUSTOMER_DAILY_ATTEMPTS:
             return PolicyDecision(
                 allowed=False,
@@ -119,9 +112,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ── Gate 8: Contact window (IST 09:00–21:00) ──
-        # Only blocks customer-facing actions (SMS, email, payment link).
-        # Silent retries are allowed 24/7.
         if context.is_contact_action:
             now_utc = datetime.now(timezone.utc)
             ist = timezone(timedelta(hours=5, minutes=30))
@@ -139,7 +129,6 @@ class RecoveryPolicyEngine:
                     requires_human_approval=False,
                 )
 
-        # ── Gate 9: Contact frequency cap ──
         if context.is_contact_action and context.contact_count >= self.MAX_CONTACT_FREQUENCY:
             return PolicyDecision(
                 allowed=False,
@@ -151,7 +140,6 @@ class RecoveryPolicyEngine:
                 requires_human_approval=False,
             )
 
-        # ── All gates passed ──
         return PolicyDecision(
             allowed=True,
             reason="Action satisfies all recovery policy gates",

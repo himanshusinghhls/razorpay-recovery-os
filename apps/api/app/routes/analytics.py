@@ -104,21 +104,32 @@ async def run_benchmark_simulation():
     50,000 event benchmark simulation.
 
     Uses the policy engine with synthetic events.
-    AI probabilities are estimated from the model's observed behavior
-    on labeled test sets (not hardcoded constants).
+    AI probabilities and event distributions are dynamically loaded
+    from the domain/policy/taxonomy.yaml file.
     """
+    import yaml
+    from pathlib import Path
+
+    taxonomy_path = Path("domain/policy/taxonomy.yaml")
+    with open(taxonomy_path, "r") as f:
+        taxonomy = yaml.safe_load(f)
+
+    classes = taxonomy.get("classes", {})
+    reasons = []
+    weights = []
+    prob_map = {}
+
+    for reason, cfg in classes.items():
+        reasons.append(reason)
+        weights.append(cfg.get("simulation_weight", 0.0))
+        prob_map[reason] = cfg.get("ai_recovery_probability", 0.0)
+
     count = 50000
     events = []
-    reasons = [
-        "insufficient_funds",
-        "temporary_network_timeout",
-        "suspected_fraud",
-        "card_expired",
-    ]
 
     for i in range(count):
-        reason = random.choices(reasons, weights=[0.4, 0.4, 0.05, 0.15])[0]
-        amount = random.randint(100, 24000) * 100  # paise
+        reason = random.choices(reasons, weights=weights)[0]
+        amount = random.randint(100, 24000) * 100
         events.append(
             {
                 "payment_id": f"pay_synth_{i}",
@@ -144,14 +155,8 @@ async def run_benchmark_simulation():
         if reason == "temporary_network_timeout" and event["retry_count"] < 2:
             baseline_recovered += amount * 0.5
 
-        prob_map = {
-            "insufficient_funds": 0.72,
-            "temporary_network_timeout": 0.88,
-            "suspected_fraud": 0.0,
-            "card_expired": 0.15,
-        }
         ai_prob = prob_map.get(reason, 0.0)
-        is_suspicious = reason == "suspected_fraud"
+        is_suspicious = (reason == "suspected_fraud")
 
         action = RecoveryAction(
             action_type=RecoveryActionType.RETRY_PAYMENT,

@@ -35,6 +35,10 @@ flowchart TB
       I --> K
     end
 
+    subgraph Security & Environment
+      L["Environment Variables (.env)"] -.->|Injected via Pydantic Field| M["Settings (FastAPI)"]
+    end
+
     style A fill:#1e3a5f,stroke:#3b82f6,color:#fff
     style C fill:#4c1d95,stroke:#8b5cf6,color:#fff
     style F fill:#831843,stroke:#f43f5e,color:#fff
@@ -51,6 +55,12 @@ RecoveryOS manages state across three distinct layers:
 | **Observed State** | What actually happened | Webhook events, failure reasons, amounts |
 | **Decision State** | What the AI and Policy Engine decided to do | `RecoveryDecision`, `PolicyDecision`, Pending Reviews |
 | **Audit/Execution State** | What was actually executed | `AuditRecord`, `ExecutionRecord` |
+
+## Security & Graceful Degradation
+
+- **Adversarial Resiliency:** A dedicated testing suite (`/safety/adversarial`) attacks the API with prompt injections, negative amounts, and fake fraud events to guarantee the Policy Engine boundaries hold against malicious actors.
+- **Graceful Fallback:** If the Gemini API hits a rate limit (429) or fails, the application doesn't crash. It falls back to a deterministic taxonomy configuration to safely score and route failures offline.
+- **Environment Isolation:** Secrets and keys are not hardcoded. Pydantic `Field(...)` requirements strictly enforce `.env` configuration prior to the backend booting.
 
 ## Package Structure
 

@@ -67,6 +67,12 @@ Every discrete step writes to `audit_log` in PostgreSQL: detection → AI diagno
 ### 5. Webhook Reconciliation Closes the Loop
 When Razorpay sends `payment.captured`, our webhook handler verifies the signature, idempotently stores the event, and transitions the execution from `STARTED → SUCCEEDED`. This is how we measure actual recovery — not just intent.
 
+### 6. Strict Environment Boundaries & Security
+We use strict Pydantic `Field` declarations for all configurations. API keys and secrets (like `api_key`, `razorpay_key_secret`) are rigorously decoupled from code and must be injected via `.env`. A dedicated `/safety/adversarial` route actively tests the AI boundary against prompt injections and negative amount manipulation, proving the Policy Engine holds the line against attacks.
+
+### 7. Graceful Degradation (Taxonomy Fallback)
+If the Gemini API hits a rate limit (429) or goes offline, the system doesn't crash. It falls back to a deterministic YAML taxonomy (`_taxonomy_fallback`), meaning payments continue to process offline. AI is treated as an enhancement, not a single point of failure.
+
 ---
 
 ## Documentation Suite
@@ -89,6 +95,8 @@ We have documented the entire architecture, evaluation methodology, and complian
 3. **Fraud never reached the escalation queue**: The `suspicious` flag was hardcoded to `False` in the recovery endpoint. Payments flagged as `suspected_fraud` by the AI were still being auto-executed. Fixed by deriving the flag from the failure reason.
 
 4. **Empty scaffolding directories**: ~20 empty `__init__.py`-only directories (`infrastructure/`, `domain/customer/`, `docs/`) made the repo look like boilerplate. Removed everything that had no real code.
+
+5. **Hardcoded Secrets**: The API test key (`ros_demo_key_2026`) was hardcoded in `config.py`. Refactored `Settings` to strictly enforce environment variable loading using Pydantic `Field(...)`, ensuring the app fails to start securely if misconfigured.
 
 ---
 

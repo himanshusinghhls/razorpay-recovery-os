@@ -1,21 +1,15 @@
-from fastapi import APIRouter
-
-from integrations.razorpay.client import RazorpayClient
+from fastapi import APIRouter, Request
 
 router = APIRouter(prefix="/razorpay", tags=["Razorpay"])
 
 
 @router.get("/health")
-async def razorpay_health():
-    client = RazorpayClient()
+async def razorpay_health(request: Request):
+    client = request.app.state.razorpay
 
-    try:
-        response = await client.client.get("/payments")
+    response = await client.client.get("/payments")
 
-        return {
-            "authenticated": response.status_code == 200,
-            "status_code": response.status_code,
-        }
-
-    finally:
-        await client.close()
+    return {
+        "authenticated": response.status_code == 200,
+        "status_code": response.status_code,
+    }

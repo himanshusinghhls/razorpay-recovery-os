@@ -10,9 +10,24 @@ from ..db.models import ExecutionRecord, ReviewRecord, AuditRecord
 from domain.decision.models import RecoveryDecision
 from domain.execution.models import ExecutionStatus
 from domain.policy.engine import RecoveryPolicyEngine
+from domain.policy.models import PolicyContext
 from domain.recovery.actions import RecoveryAction, RecoveryActionType
 from domain.review.models import ReviewStatus
 from application.recovery.service import RecoveryApplicationService
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime, timezone, timedelta
+
+class PolicySimulateRequest(BaseModel):
+    action_type: str
+    amount: int
+    retry_count: int
+    suspicious: bool
+    customer_attempts_today: int
+    is_contact_action: bool
+    contact_count: int
+    hours_since_first_failure: Optional[int] = None
+
 
 router = APIRouter(
     prefix="/analytics",
@@ -86,6 +101,19 @@ async def get_analytics_summary(
         for r in recent_records
     ]
 
+    blocked_stmt = select(func.count()).where(
+        ExecutionRecord.status == ExecutionStatus.FAILED,
+        ExecutionRecord.message.ilike("%policy%"),
+    )
+    blocked_result = await session.execute(blocked_stmt)
+    policy_blocks = blocked_result.scalar() or 0
+
+    unsafe_rate = (
+        round(policy_blocks / total_executions * 100, 2)
+        if total_executions > 0
+        else 0.0
+    )
+
     return {
         "total_executions": total_executions,
         "successful_recoveries": successful,
@@ -93,7 +121,7 @@ async def get_analytics_summary(
         "recovery_rate_percent": recovery_rate,
         "pending_reviews": pending_reviews,
         "total_audit_entries": total_audit_entries,
-        "unsafe_action_rate": 0.0,
+        "unsafe_action_rate": unsafe_rate,
         "recent_transactions": recent_transactions,
     }
 
@@ -152,14 +180,17 @@ async def run_benchmark_simulation():
         amount = event["amount"]
         reason = event["failure_reason"]
 
-        if reason == "temporary_network_timeout" and event["retry_count"] < 2:
+        if (reason == "temporary_network_timeout" or reason == "insufficient_funds") and event["retry_count"] < 2:
             baseline_recovered += amount * 0.5
 
         ai_prob = prob_map.get(reason, 0.0)
         is_suspicious = (reason == "suspected_fraud")
+        
+        hallucinated = random.random() < 0.04
+        should_retry = ai_prob > 0 and (event["retry_count"] < 2 or hallucinated)
 
         action = RecoveryAction(
-            action_type=RecoveryActionType.RETRY_PAYMENT,
+            action_type=RecoveryActionType.RETRY_PAYMENT if should_retry else RecoveryActionType.STOP_RECOVERY,
             payment_id=event["payment_id"],
             customer_id=event["customer_id"],
             amount=amount,
@@ -184,16 +215,23 @@ async def run_benchmark_simulation():
         )
 
         if not authorization.executable:
-            policy_blocks += 1
+            if action.action_type != RecoveryActionType.STOP_RECOVERY:
+                policy_blocks += 1
             if authorization.policy_decision.requires_human_approval:
                 escalations += 1
         elif ai_prob > 0:
-            ai_recovered += amount * ai_prob * 0.7
+            ai_recovered += amount * ai_prob
 
     uplift = (
         ((ai_recovered - baseline_recovered) / baseline_recovered) * 100
         if baseline_recovered > 0
         else 0
+    )
+
+    unsafe_rate = (
+        round(policy_blocks / count * 100, 2)
+        if count > 0
+        else 0.0
     )
 
     return {
@@ -203,5 +241,54 @@ async def run_benchmark_simulation():
         "incremental_uplift_percent": round(uplift, 1),
         "policy_blocks": policy_blocks,
         "escalations": escalations,
-        "unsafe_action_rate": 0.0,
+        "unsafe_action_rate": unsafe_rate,
     }
+
+
+@router.post("/simulate-policy")
+async def simulate_policy(req: PolicySimulateRequest):
+    """
+    Playground endpoint: evaluate context against the deterministic policy engine.
+    """
+    first_failure = None
+    if req.hours_since_first_failure is not None:
+        first_failure = datetime.now(timezone.utc) - timedelta(hours=req.hours_since_first_failure)
+
+    try:
+        action_enum = RecoveryActionType(req.action_type)
+    except ValueError:
+        return {"error": f"Invalid action_type: {req.action_type}"}
+
+    context = PolicyContext(
+        action_type=action_enum,
+        amount=req.amount,
+        retry_count=req.retry_count,
+        suspicious=req.suspicious,
+        first_failure_at=first_failure,
+        customer_attempts_today=req.customer_attempts_today,
+        is_contact_action=req.is_contact_action,
+        contact_count=req.contact_count,
+    )
+
+    engine = RecoveryPolicyEngine()
+    decision = engine.evaluate(context)
+
+    return {
+        "allowed": decision.allowed,
+        "reason": decision.reason,
+        "requires_human_approval": decision.requires_human_approval,
+    }
+
+
+@router.get("/taxonomy")
+async def get_taxonomy():
+    import yaml
+    from pathlib import Path
+    
+    taxonomy_path = Path("domain/policy/taxonomy.yaml")
+    try:
+        with open(taxonomy_path, "r") as f:
+            taxonomy = yaml.safe_load(f)
+        return taxonomy
+    except Exception as e:
+        return {"error": str(e), "classes": {}}

@@ -35,7 +35,7 @@ class PostgresAuditRepository(AuditRepository):
             data=entry.data,
         )
         self.session.add(record)
-        await self.session.commit()
+        await self.session.flush()
 
     async def get_by_payment_id(self, payment_id: str) -> list[AuditEntry]:
         stmt = (

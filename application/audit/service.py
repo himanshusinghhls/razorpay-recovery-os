@@ -42,6 +42,7 @@ class AuditService:
         recovery_probability: float,
         recommended_action: str,
         expected_recovery: float,
+        raw_prompt: str | None = None,
     ) -> None:
         entry = AuditEntry(
             payment_id=payment_id,
@@ -53,6 +54,7 @@ class AuditService:
                 "recovery_probability": recovery_probability,
                 "recommended_action": recommended_action,
                 "expected_recovery": expected_recovery,
+                "raw_prompt": raw_prompt,
             },
         )
         await self.repository.save(entry)

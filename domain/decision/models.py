@@ -23,6 +23,7 @@ class RecoveryDecision:
     confidence: float
 
     action: Optional[RecoveryAction]
+    raw_prompt: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.amount <= 0:

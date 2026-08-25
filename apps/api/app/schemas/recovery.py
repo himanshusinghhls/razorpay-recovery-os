@@ -13,3 +13,4 @@ class RecoveryResponse(BaseModel):
     action_type: str
     provider_reference: Optional[str]
     message: str
+    pipeline_latency_ms: Optional[float] = None

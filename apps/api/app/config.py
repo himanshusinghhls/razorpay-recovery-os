@@ -15,11 +15,14 @@ class Settings(BaseSettings):
     razorpay_key_secret: str
     razorpay_webhook_secret: str = ""
 
+    api_key: str = "ros_demo_key_2026"
+
     database_url: str
-    redis_url: str
 
     next_public_api_url: str = "http://localhost:8000"
     gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_temperature: float = 0.2
 
     cors_origins: list[str] = [
         "http://localhost:3000",

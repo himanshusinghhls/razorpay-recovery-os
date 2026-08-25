@@ -10,6 +10,7 @@ from .routes.recoveries import router as recoveries_router
 from .routes.analytics import router as analytics_router
 from .routes.audit import router as audit_router
 from .routes.reviews import router as reviews_router
+from .middleware import APIKeyAuthMiddleware, StructuredLoggingMiddleware
 
 
 app = FastAPI(
@@ -19,13 +20,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(APIKeyAuthMiddleware)
+app.add_middleware(StructuredLoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],
 )
 
 
@@ -44,25 +47,13 @@ app.include_router(
     prefix="/api/v1",
 )
 
-app.include_router(
-    recoveries_router,
-    prefix="/api/v1",
-)
+from apps.api.app.routes.safety import router as safety_router
 
-app.include_router(
-    analytics_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    audit_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    reviews_router,
-    prefix="/api/v1",
-)
+app.include_router(recoveries_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(reviews_router, prefix="/api/v1")
+app.include_router(safety_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])

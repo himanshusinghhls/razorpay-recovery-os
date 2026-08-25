@@ -9,10 +9,14 @@ import {
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   ArrowRight, CreditCard, TrendingUp, Search, Wallet,
   CircleDollarSign, Lock, Sparkles, Ban, User,
-  Link as LinkIcon, Cpu, ShieldCheck, Box, Package, WalletCards, StopCircle
+  Link as LinkIcon, Cpu, ShieldCheck, Box, Package, WalletCards, StopCircle, BookOpen
 } from "lucide-react";
 
-const API_BASE = "http://127.0.0.1:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1`
+  : "http://127.0.0.1:8000/api/v1";
+
+axios.defaults.headers.common["X-API-Key"] = "ros_demo_key_2026";
 
 type PipelineStage = "idle" | "detect" | "diagnose" | "policy" | "execute" | "result";
 type PipelineResult = "success" | "escalated" | "blocked" | "error" | null;
@@ -34,18 +38,46 @@ const FAILURE_REASONS = [
   { value: "card_expired", label: "Card Expired", emoji: <Clock className="w-4 h-4" /> },
 ];
 
-const spring = { type: "spring", stiffness: 300, damping: 28 };
-const stagger = { staggerChildren: 0.08, delayChildren: 0.1 };
+const linear = { type: "tween" as const, duration: 0.15 };
+const spring = { type: "spring" as const, stiffness: 300, damping: 28 };
+const stagger = { staggerChildren: 0.05, delayChildren: 0.05 };
 
 export default function RecoveryOSDashboard() {
-  const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit">("live");
+  const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit" | "playground" | "taxonomy" | "safety">("live");
+
+
+
+  const [safetyResults, setSafetyResults] = useState<any[]>([]);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+
+  const [taxonomyData, setTaxonomyData] = useState<any>(null);
+  const [taxonomyLoading, setTaxonomyLoading] = useState(false);
+
+  const fetchSafety = async () => {
+    setSafetyLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/safety/adversarial`);
+      setSafetyResults(res.data.results || []);
+    } catch { } finally { setSafetyLoading(false); }
+  };
+
+  const fetchTaxonomy = async () => {
+    setTaxonomyLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/analytics/taxonomy`);
+      setTaxonomyData(res.data || null);
+    } catch { } finally { setTaxonomyLoading(false); }
+  };
+
+
 
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
   const [pipelineResult, setPipelineResult] = useState<PipelineResult>(null);
   const [pipelineCards, setPipelineCards] = useState<{ key: string; title: string; detail: string; color: string; icon: React.ReactNode }[]>([]);
   const [isRecovering, setIsRecovering] = useState(false);
 
-  const [amount, setAmount] = useState<number>(499);
+  const [amountInput, setAmountInput] = useState<string>("499");
+  const amount = parseInt(amountInput) || 0;
   const [simulateMode, setSimulateMode] = useState(false);
   const [failureReason, setFailureReason] = useState("insufficient_funds");
 
@@ -114,7 +146,7 @@ export default function RecoveryOSDashboard() {
         amount: orderAmount,
         currency: "INR",
         name: "RecoveryOS Demo",
-        description: "Test Payment for AI Recovery Demo",
+        description: "AI-Powered Revenue Recovery",
         order_id: order_id,
         handler: async function (response: any) {
           if (hasTriggeredRecovery) return;
@@ -148,10 +180,12 @@ export default function RecoveryOSDashboard() {
       const rzp = new (window as any).Razorpay(options);
       rzp.on("payment.failed", function (response: any) {
         localFailures++;
-        if (localFailures > 2) {
+        if (localFailures >= 3) {
           rzp.close();
-          addPipelineCard("error", "Max Retries Exceeded", "Razorpay Checkout closed automatically after 3 failed attempts.", "red", <Ban className="w-5 h-5 text-red-500" />);
+          setPipelineStage("result");
           setPipelineResult("blocked");
+          addPipelineCard("error", "Max Retries Exceeded", "Razorpay Checkout closed automatically after 3 failed attempts.", "red", <Ban className="w-5 h-5 text-red-500" />);
+          setIsRecovering(false);
           return;
         }
 
@@ -161,7 +195,7 @@ export default function RecoveryOSDashboard() {
         const realPaymentId = response.error?.metadata?.payment_id;
         setPipelineStage("detect");
         addPipelineCard("failed", "Payment Failed", `Reason: ${reason}`, "red", <XCircle className="w-5 h-5 text-red-500" />);
-        triggerRecoveryForPayment(amountPaise, "insufficient_funds", 0, realPaymentId);
+        triggerRecoveryForPayment(amountPaise, "insufficient_funds", localFailures, realPaymentId);
       });
       rzp.open();
     } catch (error: any) {
@@ -184,7 +218,7 @@ export default function RecoveryOSDashboard() {
     try {
       const res = await axios.post(`${API_BASE}/recoveries/execute`, {
         payment_id: paymentId,
-        customer_id: `cust_${Math.random().toString(36).substring(2, 6)}`,
+        customer_id: "cust_demo_001",
         amount: amountPaise,
         failure_reason: reason,
         retry_count: retryCount,
@@ -245,7 +279,7 @@ export default function RecoveryOSDashboard() {
     try {
       const res = await axios.post(`${API_BASE}/recoveries/execute`, {
         payment_id: paymentId,
-        customer_id: `cust_demo_${Math.random().toString(36).substring(2, 6)}`,
+        customer_id: "cust_demo_001",
         amount: amountPaise,
         failure_reason: failureReason,
       });
@@ -353,8 +387,10 @@ export default function RecoveryOSDashboard() {
   const tabs = [
     { key: "live", label: "Live Recovery", icon: Zap },
     { key: "benchmark", label: "50k Benchmark", icon: BarChart3 },
-    { key: "reviews", label: "Escalation Queue", icon: Shield },
+    { key: "reviews", label: `Escalation Queue ${analytics?.pending_reviews ? `(${analytics.pending_reviews})` : ''}`, icon: Shield },
     { key: "audit", label: "Audit Trail", icon: Eye },
+    { key: "safety", label: "Adversarial Wall", icon: ShieldAlert },
+    { key: "taxonomy", label: "Taxonomy", icon: BookOpen },
   ];
 
   return (
@@ -364,13 +400,13 @@ export default function RecoveryOSDashboard() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2.5 rounded-xl shadow-md shadow-blue-200">
-                <Zap className="w-6 h-6 text-white" />
+              <div className="bg-[#0c244c] p-2.5 rounded-lg shadow-sm">
+                <Zap className="w-5 h-5 text-white" />
               </div>
-              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#fafbfc]" />
+              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#10b981] rounded-full border-2 border-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gray-900">RecoveryOS</h1>
+              <h1 className="text-xl font-bold tracking-tight text-[#0c244c]">RecoveryOS</h1>
               <p className="text-xs text-blue-600 font-medium">Razorpay AI Buildathon · Track 03</p>
             </div>
           </div>
@@ -390,7 +426,7 @@ export default function RecoveryOSDashboard() {
           </div>
         </header>
 
-        <nav className="flex gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+        <nav className="flex gap-1 bg-white p-1 rounded-lg border border-gray-200 shadow-sm w-max">
           {tabs.map(tab => {
             const Icon = tab.icon;
             return (
@@ -413,31 +449,43 @@ export default function RecoveryOSDashboard() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
 
             <motion.div variants={{ show: stagger }} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {[
-                { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, iconColor: "text-blue-500", bg: "bg-blue-50" },
-                { label: "Recovered", value: analytics?.successful_recoveries ?? "—", icon: CheckCircle, iconColor: "text-emerald-500", bg: "bg-emerald-50" },
-                { label: "Blocked", value: analytics?.failed_recoveries ?? "—", icon: Ban, iconColor: "text-red-500", bg: "bg-red-50" },
-                { label: "In Review", value: analytics?.pending_reviews ?? "—", icon: ShieldAlert, iconColor: "text-amber-500", bg: "bg-amber-50" },
-                { label: "Recovery Rate", value: `${analytics?.recovery_rate_percent ?? "—"}%`, icon: TrendingUp, iconColor: "text-indigo-500", bg: "bg-indigo-50" },
-              ].map(m => {
-                const Icon = m.icon;
-                return (
-                  <motion.div
-                    key={m.label}
-                    variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
-                    transition={spring}
-                    className="glass-card rounded-xl p-4"
-                  >
+              {!analytics ? (
+                [1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="glass-card rounded-xl p-4 animate-pulse">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <div className={`w-7 h-7 rounded-lg ${m.bg} flex items-center justify-center`}>
-                        <Icon className={`w-3.5 h-3.5 ${m.iconColor}`} />
-                      </div>
-                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{m.label}</span>
+                      <div className="w-7 h-7 rounded-lg bg-gray-200"></div>
+                      <div className="w-16 h-3 bg-gray-200 rounded"></div>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{m.value}</p>
-                  </motion.div>
-                );
-              })}
+                    <div className="w-12 h-6 bg-gray-200 rounded mt-2"></div>
+                  </div>
+                ))
+              ) : (
+                [
+                  { label: "Total Runs", value: analytics?.total_executions ?? "—", icon: Activity, iconColor: "text-blue-500", bg: "bg-blue-50" },
+                  { label: "Recovered", value: analytics?.successful_recoveries ?? "—", icon: CheckCircle, iconColor: "text-emerald-500", bg: "bg-emerald-50" },
+                  { label: "Blocked", value: analytics?.failed_recoveries ?? "—", icon: Ban, iconColor: "text-red-500", bg: "bg-red-50" },
+                  { label: "In Review", value: analytics?.pending_reviews ?? "—", icon: ShieldAlert, iconColor: "text-amber-500", bg: "bg-amber-50" },
+                  { label: "Recovery Rate", value: `${analytics?.recovery_rate_percent ?? "—"}%`, icon: TrendingUp, iconColor: "text-indigo-500", bg: "bg-indigo-50" },
+                ].map(m => {
+                  const Icon = m.icon;
+                  return (
+                    <motion.div
+                      key={m.label}
+                      variants={{ hidden: { opacity: 0, y: 5 }, show: { opacity: 1, y: 0 } }}
+                      transition={linear}
+                      className="glass-card rounded-lg p-4"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={`w-7 h-7 rounded-lg ${m.bg} flex items-center justify-center`}>
+                          <Icon className={`w-3.5 h-3.5 ${m.iconColor}`} />
+                        </div>
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{m.label}</span>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{m.value}</p>
+                    </motion.div>
+                  );
+                })
+              )}
             </motion.div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -499,8 +547,8 @@ export default function RecoveryOSDashboard() {
                       <span className="absolute left-3 top-2.5 text-gray-500 font-medium text-lg">₹</span>
                       <input
                         type="number"
-                        value={amount === 0 ? '' : amount}
-                        onChange={e => setAmount(e.target.value === '' ? 0 : Number(e.target.value))}
+                        value={amountInput}
+                        onChange={e => setAmountInput(e.target.value)}
                         className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl pl-8 pr-3 py-2.5 text-lg font-bold focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-gray-400 shadow-sm"
                         min="1"
                         required
@@ -556,10 +604,10 @@ export default function RecoveryOSDashboard() {
               </div>
 
               <div className="lg:col-span-3">
-                <div className="glass-card rounded-2xl p-5 min-h-[420px] max-h-[500px] flex flex-col">
+                <div className="glass-card rounded-lg p-5 min-h-[420px] max-h-[500px] flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recovery Pipeline</h3>
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#2b6aff]" />
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recovery Event Timeline</h3>
                     {pipelineStage !== "idle" && !isRecovering && (
                       <button
                         onClick={() => { setPipelineStage("idle"); setPipelineResult(null); setPipelineCards([]); }}
@@ -633,16 +681,27 @@ export default function RecoveryOSDashboard() {
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="glass-card rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recent Transactions</h3>
+                  <Database className="w-4 h-4 text-gray-500" />
+                  <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Transaction Ledger</h3>
                 </div>
                 <span className="text-[10px] text-gray-400">{recentTxns.length} records</span>
               </div>
 
-              {recentTxns.length === 0 ? (
+              {!analytics ? (
+                <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto p-4 space-y-4">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="flex gap-3 animate-pulse items-center">
+                      <div className="w-4 h-4 bg-gray-200 rounded-full"></div>
+                      <div className="w-20 h-4 bg-gray-200 rounded"></div>
+                      <div className="w-12 h-4 bg-gray-200 rounded-full"></div>
+                      <div className="w-32 h-4 bg-gray-200 rounded flex-1"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : recentTxns.length === 0 ? (
                 <div className="py-12 text-center text-gray-400">
                   <Database className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">No transactions yet</p>
@@ -682,7 +741,16 @@ export default function RecoveryOSDashboard() {
                                         <div key={i} className="relative">
                                           <div className="absolute -left-[13px] top-1.5 w-2 h-2 rounded-full bg-white border-2 border-gray-300" />
                                           <p className={`text-[11px] font-semibold ${ec[e.event_type] || "text-gray-500"}`}>{e.event_type.replace(/_/g, " ")}</p>
-                                          <pre className="text-[10px] text-gray-400 mt-0.5 font-mono whitespace-pre-wrap break-all bg-gray-50 p-2 rounded">{JSON.stringify(e.data, null, 1)}</pre>
+                                          <div className="mt-1 bg-gray-50/50 p-2 rounded text-[10px] space-y-1 border border-gray-100">
+                                            {Object.entries(e.data).map(([k, v]) => (
+                                              <div key={k} className="flex gap-2 items-start">
+                                                <span className="text-gray-500 font-medium w-24 flex-shrink-0">{k.replace(/_/g, " ")}</span>
+                                                <span className="text-gray-800 font-mono flex-1 break-words">
+                                                  {k === 'amount' || k === 'expected_recovery' ? `${v} (₹${(Number(v) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })})` : typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
                                         </div>
                                       );
                                     })}
@@ -704,7 +772,7 @@ export default function RecoveryOSDashboard() {
         )}
 
         {activeTab === "benchmark" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-2xl p-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-lg p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BarChart3 className="w-6 h-6 text-blue-500" /> 50,000 Event Evaluation</h2>
@@ -740,25 +808,31 @@ export default function RecoveryOSDashboard() {
                     { label: "Policy Blocks", value: benchmarkData.policy_blocks.toLocaleString(), color: "text-amber-600" },
                     { label: "Unsafe Rate", value: `${benchmarkData.unsafe_action_rate}%`, color: "text-emerald-600" },
                   ].map(m => (
-                    <div key={m.label} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <div key={m.label} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
                       <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{m.label}</p>
                       <p className={`text-lg font-mono font-bold ${m.color}`}>{m.value}</p>
                     </div>
                   ))}
                 </div>
-                <div className="bg-gray-900 text-gray-300 p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto whitespace-pre">
-                  {`═══ RECOVERYOS EVALUATION ══════════════════════════════
-Events: ${benchmarkData.total_events.toLocaleString()}  |  Unsafe: ${benchmarkData.unsafe_action_rate}%
-
-Baseline (static rules):  ₹${(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}
-RecoveryOS (AI agent):    ₹${(benchmarkData.ai_recovery_paise / 100).toLocaleString()}
-Uplift:                   +${benchmarkData.incremental_uplift_percent}%
-Escalations:              ${benchmarkData.escalations?.toLocaleString() ?? "N/A"}
-Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
-════════════════════════════════════════════════════════`}
+                <div className="bg-gray-900 text-gray-300 p-5 rounded-lg font-mono text-xs leading-relaxed overflow-x-auto whitespace-pre shadow-inner">
+                  <div className="flex gap-1.5 mb-3">
+                    <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
+                    <div className="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+                  </div>
+                  <span className="text-gray-500">~/recovery-os $</span> ./run_eval --events 50000 --model gemini-2.5-flash<br /><br />
+                  <span className="text-blue-400">═══ RECOVERYOS EVALUATION ══════════════════════════════</span><br />
+                  <span className="text-gray-400">Events:</span> <span className="text-white">{benchmarkData.total_events.toLocaleString()}</span>  |  <span className="text-gray-400">Unsafe:</span> <span className="text-emerald-400">{benchmarkData.unsafe_action_rate}%</span><br /><br />
+                  <span className="text-gray-400">Baseline (static rules):</span>  <span className="text-white">₹{(benchmarkData.baseline_recovery_paise / 100).toLocaleString()}</span><br />
+                  <span className="text-gray-400">RecoveryOS (AI agent):</span>    <span className="text-emerald-400 font-bold">₹{(benchmarkData.ai_recovery_paise / 100).toLocaleString()}</span><br />
+                  <span className="text-gray-400">Uplift:</span>                   <span className="text-blue-400 font-bold">+{benchmarkData.incremental_uplift_percent}%</span><br />
+                  <span className="text-gray-400">Escalations:</span>              <span className="text-amber-400">{benchmarkData.escalations?.toLocaleString() ?? "N/A"}</span><br />
+                  <span className="text-gray-400">Policy Blocks:</span>            <span className="text-red-400">{benchmarkData.policy_blocks.toLocaleString()}</span><br />
+                  <span className="text-blue-400">════════════════════════════════════════════════════════</span><br />
+                  <span className="text-gray-500">~/recovery-os $</span> <span className="animate-pulse">_</span>
                 </div>
 
-                <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-5">
+                <div className="mt-6 bg-blue-50 border border-blue-100 rounded-lg p-5">
                   <h4 className="text-sm font-bold text-blue-900 flex items-center gap-2 mb-3">
                     <Sparkles className="w-4 h-4 text-blue-600" /> What do these numbers mean?
                   </h4>
@@ -784,8 +858,17 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
               </button>
             </div>
 
-            {reviews.length === 0 ? (
-              <div className="glass-card rounded-2xl py-16 text-center text-gray-400">
+            {reviewsLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map(i => (
+                  <div key={i} className="glass-card rounded-lg p-5 animate-pulse flex flex-col gap-3">
+                    <div className="flex gap-2"><div className="w-16 h-4 bg-gray-200 rounded"></div><div className="w-24 h-4 bg-gray-200 rounded"></div></div>
+                    <div className="w-full h-12 bg-gray-200 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            ) : reviews.length === 0 ? (
+              <div className="glass-card rounded-lg py-16 text-center text-gray-400">
                 <Shield className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm">No reviews in queue</p>
                 <p className="text-xs mt-1 text-gray-400">Try simulating a "Suspected Fraud" failure</p>
@@ -793,7 +876,7 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
             ) : (
               <div className="space-y-3">
                 {reviews.map(rev => (
-                  <motion.div key={rev.review_id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-xl p-5">
+                  <motion.div key={rev.review_id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-lg p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2">
@@ -832,17 +915,17 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                <input type="text" value={auditPaymentId} onChange={e => setAuditPaymentId(e.target.value)} onKeyDown={e => e.key === "Enter" && fetchAuditTrail()} placeholder="Enter payment ID (e.g. pay_abc123)" className="w-full bg-white border border-gray-200 text-gray-900 rounded-xl pl-10 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none font-mono shadow-sm" />
+                <input type="text" value={auditPaymentId} onChange={e => setAuditPaymentId(e.target.value)} onKeyDown={e => e.key === "Enter" && fetchAuditTrail()} placeholder="Enter payment ID (e.g. pay_abc123)" className="w-full bg-white border border-gray-200 text-gray-900 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 outline-none font-mono shadow-sm" />
               </div>
-              <button onClick={fetchAuditTrail} disabled={auditLoading || !auditPaymentId.trim()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-50 shadow-sm">
+              <button onClick={fetchAuditTrail} disabled={auditLoading || !auditPaymentId.trim()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
                 {auditLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
               </button>
             </div>
 
-            {auditTrail?.error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm">{auditTrail.error}</div>}
+            {auditTrail?.error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm">{auditTrail.error}</div>}
 
             {auditTrail?.trail && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-xl p-5">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-lg p-5">
                 <p className="text-xs text-gray-400 mb-4">{auditTrail.total_entries} events for <span className="text-gray-800 font-mono font-semibold">{auditTrail.payment_id}</span></p>
                 <div className="relative pl-4 border-l-2 border-gray-200 space-y-3">
                   {auditTrail.trail.map((entry: any, i: number) => {
@@ -870,7 +953,25 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
                             <span className={`text-xs font-semibold ${conf.color}`}>{entry.event_type.replace(/_/g, " ")}</span>
                             <span className="text-[10px] text-gray-400">{entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}</span>
                           </div>
-                          <pre className="text-[11px] text-gray-500 font-mono bg-gray-50 p-2 rounded-lg overflow-x-auto whitespace-pre-wrap break-all border border-gray-100">{JSON.stringify(entry.data, null, 2)}</pre>
+                          <div className="text-[11px] font-mono bg-gray-50/50 p-3 rounded-lg border border-gray-100 mt-1 space-y-1.5">
+                            {Object.entries(entry.data).map(([k, v]) => (
+                              k === 'raw_prompt' ? (
+                                <details key={k} className="w-full mt-1 border-t border-gray-100 pt-2">
+                                  <summary className="text-indigo-600 cursor-pointer hover:text-indigo-700 outline-none font-semibold flex items-center gap-1.5"><Search className="w-3.5 h-3.5" /> AI Decision Replay (View Prompt)</summary>
+                                  <div className="mt-2 p-3 bg-[#1e1e1e] text-[#d4d4d4] rounded-lg overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed shadow-inner">
+                                    {String(v)}
+                                  </div>
+                                </details>
+                              ) : (
+                                <div key={k} className="flex gap-2 items-start">
+                                  <span className="text-gray-500 font-semibold w-32 flex-shrink-0">{k.replace(/_/g, " ")}</span>
+                                  <span className="text-gray-800 flex-1 break-words">
+                                    {k === 'amount' || k === 'expected_recovery' ? `${v} (₹${(Number(v) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })})` : typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                  </span>
+                                </div>
+                              )
+                            ))}
+                          </div>
                         </div>
                       </div>
                     );
@@ -880,12 +981,132 @@ Policy Blocks:            ${benchmarkData.policy_blocks.toLocaleString()}
             )}
 
             {!auditTrail && (
-              <div className="glass-card rounded-xl py-16 text-center text-gray-400">
+              <div className="glass-card rounded-lg py-16 text-center text-gray-400">
                 <Eye className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm">Enter a payment ID to trace its full recovery journey</p>
                 <p className="text-[11px] mt-1 text-gray-400">detection → AI diagnosis → policy → execution → reconciliation</p>
               </div>
             )}
+          </motion.div>
+        )}
+
+        {activeTab === "safety" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><ShieldAlert className="w-6 h-6 text-red-500" /> The Adversarial Safety Wall</h2>
+                <p className="text-sm text-gray-500 mt-1">Real-time evaluation of the AI Agent and Policy Engine against adversarial attacks.</p>
+              </div>
+              <button onClick={fetchSafety} disabled={safetyLoading} className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
+                <RefreshCw className={`w-3.5 h-3.5 ${safetyLoading ? "animate-spin" : ""}`} /> Run Suite Live
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {safetyLoading ? (
+                <div className="glass-card rounded-lg p-8 text-center flex flex-col items-center justify-center space-y-4">
+                  <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+                  <p className="text-sm font-medium text-gray-600">Running adversarial attacks against Gemini 2.5 Flash and Policy Engine...</p>
+                </div>
+              ) : safetyResults.length === 0 ? (
+                <div className="glass-card rounded-lg py-16 text-center text-gray-400">
+                  <ShieldAlert className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm">Click 'Run Suite Live' to execute adversarial tests.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-12 gap-4 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:grid">
+                    <div className="col-span-4">Attack Vector</div>
+                    <div className="col-span-4">AI Agent Response</div>
+                    <div className="col-span-4">Policy Engine Boundary</div>
+                  </div>
+                  {safetyResults.map((res: any, i: number) => (
+                    <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} key={i} className="glass-card rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-6">
+                      <div className="md:col-span-4 space-y-1">
+                        <span className="text-sm font-bold text-gray-900 block">{res.name}</span>
+                        <div className="text-[10px] font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded inline-block mt-1">{res.attack_type}</div>
+                      </div>
+                      <div className={`md:col-span-4 rounded-lg p-4 border ${res.ai_status === 'passed' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          {res.ai_status === 'passed' ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+                          <span className={`text-xs font-bold uppercase ${res.ai_status === 'passed' ? 'text-emerald-700' : 'text-red-700'}`}>{res.ai_status}</span>
+                        </div>
+                        <p className="text-xs text-gray-700 font-medium">{res.ai_response}</p>
+                      </div>
+                      <div className={`md:col-span-4 rounded-lg p-4 border ${res.policy_status === 'passed' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          {res.policy_status === 'passed' ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+                          <span className={`text-xs font-bold uppercase ${res.policy_status === 'passed' ? 'text-emerald-700' : 'text-red-700'}`}>{res.policy_status}</span>
+                        </div>
+                        <p className="text-xs text-gray-700 font-medium">{res.policy_response}</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === "taxonomy" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><BookOpen className="w-6 h-6 text-blue-500" /> Taxonomy Explorer</h2>
+                <p className="text-sm text-gray-500 mt-1">Interactive view of the deterministic failure classes and recovery rules.</p>
+              </div>
+              <button onClick={fetchTaxonomy} disabled={taxonomyLoading} className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
+                <RefreshCw className={`w-3.5 h-3.5 ${taxonomyLoading ? "animate-spin" : ""}`} /> Load Taxonomy
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {taxonomyLoading ? (
+                <div className="col-span-full glass-card rounded-xl py-16 text-center text-gray-400">
+                  <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+                  <p className="text-sm">Loading taxonomy rules...</p>
+                </div>
+              ) : taxonomyData?.classes ? (
+                Object.entries(taxonomyData.classes).map(([className, classData]: [string, any]) => (
+                  <motion.div key={className} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-xl p-5 border-t-4" style={{ borderTopColor: classData.ai_recovery_probability > 0.5 ? '#10b981' : classData.ai_recovery_probability > 0 ? '#3b82f6' : '#ef4444' }}>
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="text-sm font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded-md inline-block">{className}</h3>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{classData.category}</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">AI Recovery Probability</span>
+                        <span className="font-bold text-gray-900">{(classData.ai_recovery_probability * 100).toFixed(0)}%</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Default Action</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">
+                            {classData.default_action}
+                          </span>
+                        </div>
+                      </div>
+
+
+
+                      {classData.safety_notes && (
+                        <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100 text-xs text-amber-800 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <p>{classData.safety_notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="col-span-full glass-card rounded-xl py-16 text-center text-gray-400">
+                  <BookOpen className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm">Click &apos;Load Taxonomy&apos; to view failure classes.</p>
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
 

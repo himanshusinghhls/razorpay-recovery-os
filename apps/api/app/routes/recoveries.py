@@ -21,6 +21,15 @@ from application.audit.repository import PostgresAuditRepository
 from application.review.service import ReviewService
 from integrations.razorpay.gateway import RazorpayGateway
 from domain.execution.models import RecoveryExecution, ExecutionStatus
+from apps.api.app.core.dependencies import (
+    get_recovery_app_service,
+    get_execution_orchestrator,
+    get_audit_service,
+    get_review_service,
+    get_execution_repository,
+    get_recovery_analyst_agent,
+)
+from fastapi import BackgroundTasks
 
 router = APIRouter(
     prefix="/recoveries",
@@ -67,28 +76,35 @@ async def _get_retry_context(
     return retry_count, first_failure_at, customer_attempts_today
 
 
-@router.post("/execute", response_model=RecoveryResponse)
+import time as _time
+
+RATE_LIMIT_WINDOW = 60
+MAX_REQUESTS_PER_WINDOW = 10
+_ip_hits: dict[str, list[float]] = {}
+
+
+def check_rate_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    now = _time.time()
+    _ip_hits[ip] = [t for t in _ip_hits.get(ip, []) if now - t < RATE_LIMIT_WINDOW]
+    if len(_ip_hits[ip]) >= MAX_REQUESTS_PER_WINDOW:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+    _ip_hits[ip].append(now)
+
+
+@router.post("/execute", response_model=RecoveryResponse, dependencies=[Depends(check_rate_limit)])
 async def execute_recovery(
     payload: RecoveryRequest,
-    request: Request,
     session: AsyncSession = Depends(get_db_session),
+    app_service: RecoveryApplicationService = Depends(get_recovery_app_service),
+    orchestrator: RecoveryExecutionOrchestrator = Depends(get_execution_orchestrator),
+    audit: AuditService = Depends(get_audit_service),
+    review_service: ReviewService = Depends(get_review_service),
+    repo: PostgresExecutionRepository = Depends(get_execution_repository),
+    agent: RecoveryAnalystAgent = Depends(get_recovery_analyst_agent),
 ):
     execution_id = f"exec_{uuid.uuid4().hex[:16]}"
-
-    razorpay_client = request.app.state.razorpay
-    gateway = RazorpayGateway(client=razorpay_client)
-    executor = RazorpayRecoveryExecutor(gateway=gateway)
-
-    policy_engine = RecoveryPolicyEngine()
-    app_service = RecoveryApplicationService(policy_engine=policy_engine)
-    orchestrator = RecoveryExecutionOrchestrator(executor=executor)
-
-    repo = PostgresExecutionRepository(session)
-    audit_repo = PostgresAuditRepository(session)
-    audit = AuditService(audit_repo)
-    review_service = ReviewService(session)
-
-    agent = RecoveryAnalystAgent()
+    _start = _time.time()
 
     try:
         await audit.log_failure_detected(
@@ -131,6 +147,7 @@ async def execute_recovery(
                 decision.action.action_type.value if decision.action else "none"
             ),
             expected_recovery=decision.expected_recovery,
+            raw_prompt=decision.raw_prompt,
         )
 
         retry_count, first_failure_at, customer_attempts_today = (
@@ -202,6 +219,7 @@ async def execute_recovery(
                 )
                 await repo.create(record)
 
+                await session.commit()
                 return RecoveryResponse(
                     execution_id=execution_id,
                     status="escalated",
@@ -211,6 +229,7 @@ async def execute_recovery(
                         f"Escalated to human review: "
                         f"{authorization.policy_decision.reason}"
                     ),
+                    pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
                 )
 
             await audit.log_stopping_rule(
@@ -236,12 +255,14 @@ async def execute_recovery(
             )
             await repo.create(record)
 
+            await session.commit()
             return RecoveryResponse(
                 execution_id=execution_id,
                 status=ExecutionStatus.FAILED.value,
                 action_type=record.action_type,
                 provider_reference=None,
                 message=record.message,
+                pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
             )
 
         execution_result = await orchestrator.execute(authorization)
@@ -271,12 +292,14 @@ async def execute_recovery(
             external_reference=execution_result.external_reference,
         )
 
+        await session.commit()
         return RecoveryResponse(
             execution_id=execution_id,
             status=final_status.value,
             action_type=execution_result.action_type,
             provider_reference=execution_result.external_reference,
             message=execution_result.message,
+            pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
         )
 
     except Exception as e:
@@ -314,7 +337,7 @@ from ..config import settings
 @router.post("/create-order")
 async def create_razorpay_order(
     request: Request,
-    amount: int = 15000,
+    amount: int,
     currency: str = "INR",
 ):
     """

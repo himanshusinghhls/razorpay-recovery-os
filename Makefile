@@ -3,7 +3,7 @@
 # ---- Development ----
 
 dev:
-	cd apps/api && uvicorn app.main:app --reload --port 8000
+	PYTHONPATH=. uvicorn apps.api.app.main:app --reload --port 8000
 
 web:
 	cd apps/web && npm run dev
@@ -11,13 +11,13 @@ web:
 # ---- Database ----
 
 db:
-	docker-compose up -d postgres redis
+	docker-compose up -d postgres
 
 db-init:
 	PYTHONPATH=. python scripts/init_db.py
 
 db-reset:
-	docker-compose down -v && docker-compose up -d postgres redis
+	docker-compose down -v && docker-compose up -d postgres
 	sleep 3
 	PYTHONPATH=. python scripts/init_db.py
 

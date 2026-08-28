@@ -1,6 +1,9 @@
 from application.execution.executor import RecoveryExecutor
 from application.execution.result import ExecutionResult
-from application.recovery.service import RecoveryAuthorization
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from application.recovery.service import RecoveryAuthorization
 
 
 class RecoveryExecutionOrchestrator:
@@ -29,7 +32,7 @@ class RecoveryExecutionOrchestrator:
 
     async def execute(
         self,
-        authorization: RecoveryAuthorization,
+        authorization: "RecoveryAuthorization",
     ) -> ExecutionResult:
 
         if not authorization.executable:

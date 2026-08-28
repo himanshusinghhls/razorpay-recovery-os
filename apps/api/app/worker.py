@@ -65,10 +65,7 @@ async def process_recovery_task(ctx, payload_dict: dict, execution_id: str):
     _start = _time.time()
     payload = RecoveryRequest(**payload_dict)
     
-    razorpay_client = RazorpayClient(
-        key_id=app_settings.razorpay_key_id,
-        key_secret=app_settings.razorpay_key_secret,
-    )
+    razorpay_client = RazorpayClient()
     gateway = RazorpayGateway(client=razorpay_client)
     agent = RecoveryAnalystAgent()
     policy_engine = RecoveryPolicyEngine()

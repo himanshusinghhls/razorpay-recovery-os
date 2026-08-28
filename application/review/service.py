@@ -14,10 +14,15 @@ class ReviewService:
 
     When the policy engine blocks an action with requires_human_approval,
     a PendingReview is created. Merchants can approve or reject.
+
+    The service is bound to one merchant at construction, so every query it
+    issues is tenant-scoped by construction rather than by remembering to add a
+    filter at each call site.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, merchant_id: str) -> None:
         self.session = session
+        self.merchant_id = merchant_id
 
     async def create_review(
         self,
@@ -33,6 +38,7 @@ class ReviewService:
 
         record = ReviewRecord(
             review_id=review_id,
+            merchant_id=self.merchant_id,
             payment_id=payment_id,
             customer_id=customer_id,
             amount=amount,
@@ -50,74 +56,73 @@ class ReviewService:
     async def list_pending(self) -> list[PendingReview]:
         stmt = (
             select(ReviewRecord)
-            .where(ReviewRecord.status == ReviewStatus.PENDING)
+            .where(
+                ReviewRecord.merchant_id == self.merchant_id,
+                ReviewRecord.status == ReviewStatus.PENDING,
+            )
             .order_by(ReviewRecord.created_at.desc())
         )
         result = await self.session.execute(stmt)
-        records = result.scalars().all()
-
-        return [self._to_domain(r) for r in records]
+        return [self._to_domain(r) for r in result.scalars().all()]
 
     async def list_all(self, limit: int = 100) -> list[PendingReview]:
         stmt = (
             select(ReviewRecord)
+            .where(ReviewRecord.merchant_id == self.merchant_id)
             .order_by(ReviewRecord.created_at.desc())
             .limit(limit)
         )
         result = await self.session.execute(stmt)
-        records = result.scalars().all()
-
-        return [self._to_domain(r) for r in records]
+        return [self._to_domain(r) for r in result.scalars().all()]
 
     async def get(self, review_id: str) -> PendingReview | None:
         stmt = select(ReviewRecord).where(
-            ReviewRecord.review_id == review_id
+            ReviewRecord.review_id == review_id,
+            ReviewRecord.merchant_id == self.merchant_id,
         )
         result = await self.session.execute(stmt)
         record = result.scalar_one_or_none()
 
-        if not record:
-            return None
+        return self._to_domain(record) if record else None
 
-        return self._to_domain(record)
-
-    async def approve(
-        self, review_id: str, resolved_by: str = "merchant"
+    async def _resolve(
+        self, review_id: str, new_status: ReviewStatus, resolved_by: str
     ) -> PendingReview | None:
-        stmt = select(ReviewRecord).where(
-            ReviewRecord.review_id == review_id
+        """
+        Claim a pending review and move it to a terminal state.
+
+        SELECT ... FOR UPDATE holds a row lock for the rest of the transaction.
+        Without it, two concurrent approvals could both read status=PENDING and
+        both go on to execute the recovery — a double charge against a real
+        payment method.
+        """
+        stmt = (
+            select(ReviewRecord)
+            .where(
+                ReviewRecord.review_id == review_id,
+                ReviewRecord.merchant_id == self.merchant_id,
+            )
+            .with_for_update()
         )
         result = await self.session.execute(stmt)
         record = result.scalar_one_or_none()
 
         if not record or record.status != ReviewStatus.PENDING:
+            await self.session.rollback()
             return None
 
-        record.status = ReviewStatus.APPROVED
+        record.status = new_status
         record.resolved_at = datetime.now(timezone.utc)
         record.resolved_by = resolved_by
         await self.session.commit()
 
         return self._to_domain(record)
 
-    async def reject(
-        self, review_id: str, resolved_by: str = "merchant"
-    ) -> PendingReview | None:
-        stmt = select(ReviewRecord).where(
-            ReviewRecord.review_id == review_id
-        )
-        result = await self.session.execute(stmt)
-        record = result.scalar_one_or_none()
+    async def approve(self, review_id: str, resolved_by: str) -> PendingReview | None:
+        return await self._resolve(review_id, ReviewStatus.APPROVED, resolved_by)
 
-        if not record or record.status != ReviewStatus.PENDING:
-            return None
-
-        record.status = ReviewStatus.REJECTED
-        record.resolved_at = datetime.now(timezone.utc)
-        record.resolved_by = resolved_by
-        await self.session.commit()
-
-        return self._to_domain(record)
+    async def reject(self, review_id: str, resolved_by: str) -> PendingReview | None:
+        return await self._resolve(review_id, ReviewStatus.REJECTED, resolved_by)
 
     @staticmethod
     def _to_domain(record: ReviewRecord) -> PendingReview:

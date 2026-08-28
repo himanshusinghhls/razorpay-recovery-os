@@ -1,5 +1,6 @@
-import re
 import logging
+import re
+import ssl
 from pathlib import Path
 
 import yaml
@@ -7,7 +8,7 @@ from google import genai
 from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from apps.api.app.config import settings
+from apps.api.app.config import PROJECT_ROOT, settings
 from agents.analyst.schemas import AIRecoveryDiagnosis
 from agents.analyst.prompts import RECOVERY_ANALYST_PROMPT_V1
 from domain.decision.models import RecoveryDecision
@@ -15,7 +16,21 @@ from domain.recovery.actions import RecoveryAction, RecoveryActionType
 
 logger = logging.getLogger("recoveryos.agent")
 
-TAXONOMY_PATH = Path("domain/policy/taxonomy.yaml")
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """Prefer the OS trust store; fall back to certifi if truststore is absent."""
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except ImportError:
+        import httpx
+
+        return httpx.create_ssl_context()
+
+# Anchored to the project root, not the process CWD, so the fallback keeps
+# working regardless of where the worker or API was launched from.
+TAXONOMY_PATH = PROJECT_ROOT / "domain" / "policy" / "taxonomy.yaml"
 
 
 def _sanitize_reason(raw: str) -> str:
@@ -85,7 +100,17 @@ class RecoveryAnalystAgent:
         if not api_key or api_key == "REPLACE_ME":
             raise ValueError("GEMINI_API_KEY is not configured in the environment.")
 
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key,
+            # google-genai builds its own httpx client, so it does not inherit
+            # the trust store configured for the Razorpay client. On networks
+            # with a TLS-intercepting proxy every call would otherwise fail
+            # verification and silently drop us to the taxonomy fallback.
+            http_options=types.HttpOptions(
+                async_client_args={"verify": _build_ssl_context()},
+                client_args={"verify": _build_ssl_context()},
+            ),
+        )
 
     @retry(
         stop=stop_after_attempt(3),

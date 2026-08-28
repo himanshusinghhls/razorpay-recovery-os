@@ -1,8 +1,31 @@
+import logging
+import ssl
 from typing import Any
 
 import httpx
 
 from apps.api.app.config import settings
+
+logger = logging.getLogger("recoveryos.razorpay")
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """
+    Trust the operating system's certificate store when available.
+
+    certifi alone does not know about the private root CAs that corporate TLS
+    proxies present, so on those networks every outbound call to Razorpay fails
+    with CERTIFICATE_VERIFY_FAILED. truststore delegates to the OS trust store
+    (macOS Keychain, Windows CryptoAPI, system CAs on Linux), which does. Note
+    this changes which CAs are trusted, never whether verification happens.
+    """
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except ImportError:
+        logger.debug("truststore unavailable; using certifi bundle")
+        return httpx.create_ssl_context()
 
 
 class RazorpayClient:
@@ -11,6 +34,7 @@ class RazorpayClient:
     def __init__(self) -> None:
         self.client = httpx.AsyncClient(
             base_url=self.BASE_URL,
+            verify=_build_ssl_context(),
             auth=(
                 settings.razorpay_key_id,
                 settings.razorpay_key_secret,

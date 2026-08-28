@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from application.execution.repository import ExecutionRepository
 from domain.execution.models import ExecutionStatus, RecoveryExecution
 
@@ -18,12 +20,9 @@ class RecoveryReconciliationService:
         if not execution:
             return False
 
-        updated_execution = RecoveryExecution(
-            execution_id=execution.execution_id,
-            payment_id=execution.payment_id,
-            action_type=execution.action_type,
+        updated_execution = replace(
+            execution,
             status=ExecutionStatus.SUCCEEDED,
-            external_reference=execution.external_reference,
             message="Payment captured and recovery succeeded via webhook",
         )
 

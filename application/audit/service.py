@@ -12,8 +12,11 @@ class AuditService:
     The service never makes decisions — it only records facts.
     """
 
-    def __init__(self, repository: AuditRepository) -> None:
+    def __init__(self, repository: AuditRepository, actor: str = "system") -> None:
         self.repository = repository
+        # Stamped onto every entry this service writes, so the trail records
+        # which user or component was responsible rather than just "merchant".
+        self.actor = actor
 
     async def log_failure_detected(
         self,
@@ -31,7 +34,7 @@ class AuditService:
                 "failure_reason": failure_reason,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_ai_diagnosis(
         self,
@@ -57,7 +60,7 @@ class AuditService:
                 "raw_prompt": raw_prompt,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_policy_decision(
         self,
@@ -79,7 +82,7 @@ class AuditService:
                 "retry_count": retry_count,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_execution_result(
         self,
@@ -107,7 +110,7 @@ class AuditService:
                 "external_reference": external_reference,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_escalation(
         self,
@@ -125,7 +128,7 @@ class AuditService:
                 "reason": reason,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_review_decision(
         self,
@@ -149,7 +152,7 @@ class AuditService:
                 "resolved_by": resolved_by,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)
 
     async def log_stopping_rule(
         self,
@@ -167,4 +170,4 @@ class AuditService:
                 "reason": reason,
             },
         )
-        await self.repository.save(entry)
+        await self.repository.save(entry, actor=self.actor)

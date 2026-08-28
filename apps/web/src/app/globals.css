@@ -1,112 +1,311 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 @import "tailwindcss";
 
+/*
+  RecoveryOS design system — dark, glass, Razorpay navy/blue.
+
+  Every colour is a token so surfaces stay consistent across the app and a
+  future light theme only has to redefine this block.
+*/
 :root {
-  --background: #f8f9fb;
-  --foreground: #0c244c;
-  --card: #ffffff;
-  --border: #eaebf0;
-  --muted: #6b7280;
-  --accent: #0c244c;
-  --accent-light: #2b6aff;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  /* Ground: deep navy-black, warmed slightly so it never reads pure grey. */
+  --bg-base: #05080f;
+  --bg-deep: #070b16;
+  --bg-raised: #0b1120;
+
+  /* Glass surfaces, layered by elevation. */
+  --surface-1: rgba(19, 28, 51, 0.55);
+  --surface-2: rgba(24, 35, 63, 0.68);
+  --surface-3: rgba(30, 43, 76, 0.78);
+
+  --border-subtle: rgba(120, 150, 220, 0.10);
+  --border-default: rgba(126, 160, 235, 0.16);
+  --border-strong: rgba(140, 175, 255, 0.28);
+
+  --text-primary: #eaf0fb;
+  --text-secondary: #9db0d4;
+  --text-muted: #64789e;
+
+  /* Razorpay palette, brightened for legibility on dark. */
+  --navy: #0c244c;
+  --brand: #2b6aff;
+  --brand-bright: #4f8cff;
+  --brand-glow: rgba(43, 106, 255, 0.45);
+
+  --success: #10d9a0;
+  --success-dim: rgba(16, 217, 160, 0.14);
+  --warning: #f5a524;
+  --warning-dim: rgba(245, 165, 36, 0.14);
+  --danger: #ff5a6a;
+  --danger-dim: rgba(255, 90, 106, 0.14);
+  --violet: #8b7cff;
+  --violet-dim: rgba(139, 124, 255, 0.14);
+
+  --radius: 14px;
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.42);
+  --shadow-lift: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --color-brand: var(--brand);
+  --color-brand-bright: var(--brand-bright);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-violet: var(--violet);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  border-color: var(--border-subtle);
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
+/* ---------------------------------------------------------------------------
+   Ambient background
+   Two slow-drifting radial fields plus a fine grid. Fixed and non-interactive
+   so it never affects layout or capture pointer events.
+--------------------------------------------------------------------------- */
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.aurora-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(110px);
+  opacity: 0.5;
+  will-change: transform;
 }
 
-.animate-slide-in {
-  animation: slideInUp 0.3s ease-out forwards;
+.aurora-blob--brand {
+  width: 46rem;
+  height: 46rem;
+  top: -18rem;
+  left: -12rem;
+  background: radial-gradient(circle, rgba(43, 106, 255, 0.55), transparent 68%);
+  animation: drift-a 26s ease-in-out infinite;
 }
 
-.animate-fade-scale {
-  animation: fadeInScale 0.2s ease-out forwards;
+.aurora-blob--violet {
+  width: 38rem;
+  height: 38rem;
+  top: 22%;
+  right: -14rem;
+  background: radial-gradient(circle, rgba(139, 124, 255, 0.42), transparent 68%);
+  animation: drift-b 32s ease-in-out infinite;
 }
 
-.glass-card {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+.aurora-blob--teal {
+  width: 32rem;
+  height: 32rem;
+  bottom: -14rem;
+  left: 28%;
+  background: radial-gradient(circle, rgba(16, 217, 160, 0.24), transparent 70%);
+  animation: drift-c 38s ease-in-out infinite;
 }
 
-.glass-card:hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+.grid-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(140, 175, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 175, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  /* Fade the grid out toward the edges so it reads as texture, not a table. */
+  mask-image: radial-gradient(ellipse 90% 65% at 50% 32%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 65% at 50% 32%, #000 40%, transparent 100%);
 }
 
-.payment-card {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1.75rem;
-  color: #0c244c;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(7rem, 5rem) scale(1.12); }
+}
+
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-6rem, 7rem) scale(1.08); }
+}
+
+@keyframes drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(5rem, -4rem) scale(1.15); }
+}
+
+/* ---------------------------------------------------------------------------
+   Glass surfaces
+--------------------------------------------------------------------------- */
+
+.glass {
+  background: var(--surface-1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-raised {
+  background: var(--surface-2);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Hairline highlight along the top edge — reads as light catching glass. */
+.glass-sheen {
   position: relative;
   overflow: hidden;
 }
 
-.payment-card::before {
-  content: '';
+.glass-sheen::before {
+  content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: var(--accent-light);
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(160, 195, 255, 0.5),
+    transparent
+  );
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.glow-brand  { box-shadow: 0 0 0 1px var(--border-strong), 0 0 28px -6px var(--brand-glow); }
+.glow-success{ box-shadow: 0 0 0 1px rgba(16, 217, 160, 0.3),  0 0 24px -8px rgba(16, 217, 160, 0.5); }
+.glow-danger { box-shadow: 0 0 0 1px rgba(255, 90, 106, 0.3),  0 0 24px -8px rgba(255, 90, 106, 0.5); }
+.glow-warning{ box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.3),  0 0 24px -8px rgba(245, 165, 36, 0.5); }
+
+/* ---------------------------------------------------------------------------
+   Motion primitives
+--------------------------------------------------------------------------- */
+
+/* Sweeping highlight used on the primary CTA. */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.16) 40%,
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.6s linear infinite;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+/* Expanding ring behind a live status dot. */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.75); opacity: 0.9; }
+  70%  { transform: scale(2.4);  opacity: 0; }
+  100% { transform: scale(2.4);  opacity: 0; }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+.pulse-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: pulse-ring 2s cubic-bezier(0.24, 0.6, 0.35, 1) infinite;
+}
+
+/* Vertical travel of the light along the pipeline spine. */
+@keyframes flow-down {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  40%  { opacity: 1; }
+  100% { transform: translateY(320%);  opacity: 0; }
+}
+
+.flow-line {
+  animation: flow-down 1.8s ease-in-out infinite;
+}
+
+@keyframes count-glow {
+  0%, 100% { text-shadow: 0 0 18px rgba(79, 140, 255, 0.0); }
+  50%      { text-shadow: 0 0 18px rgba(79, 140, 255, 0.55); }
+}
+
+.metric-live {
+  animation: count-glow 2.4s ease-in-out infinite;
+}
+
+/* Indeterminate progress sweep for in-flight pipeline stages. */
+@keyframes scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.scan-bar {
+  animation: scan 1.4s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Chrome
+--------------------------------------------------------------------------- */
+
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  {
+  background: rgba(126, 160, 235, 0.22);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(126, 160, 235, 0.4); background-clip: padding-box; }
+
+::selection {
+  background: rgba(43, 106, 255, 0.35);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-bright);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Respect users who have asked the OS to reduce motion: kill the ambient
+   loops and long transitions, keep the interface fully functional. */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .shimmer,
+  .pulse-ring::after,
+  .flow-line,
+  .metric-live,
+  .scan-bar {
+    animation: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
 }

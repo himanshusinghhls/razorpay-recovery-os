@@ -1,0 +1,178 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
+
+import {
+  api,
+  errorMessage,
+  setAccessToken,
+  setSessionLostHandler,
+} from "./api";
+
+export type Role = "viewer" | "analyst" | "admin";
+
+export interface UserProfile {
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+  merchant_id: string;
+  merchant_name: string;
+}
+
+interface SessionResponse {
+  access_token: string;
+  expires_in: number;
+  user: UserProfile;
+}
+
+interface AuthState {
+  user: UserProfile | null;
+  /** True until the initial silent-refresh attempt settles. */
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  /** Role rank check, mirroring the backend's require_role. */
+  can: (minimum: Role) => boolean;
+}
+
+const RANK: Record<Role, number> = { viewer: 0, analyst: 1, admin: 2 };
+
+const AuthContext = createContext<AuthState | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (refreshTimer.current) {
+      clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+    }
+  }, []);
+
+  /**
+   * Renew shortly before the access token expires.
+   *
+   * Without this the dashboard would simply start 401-ing mid-session once the
+   * short-lived token aged out, and the user would be bounced to login while
+   * actively working.
+   */
+  const scheduleRefresh = useCallback(
+    (expiresIn: number) => {
+      clearTimer();
+      const leadTime = Math.max(expiresIn - 60, 30) * 1000;
+      refreshTimer.current = setTimeout(async () => {
+        try {
+          const res = await api.post<SessionResponse>("/auth/refresh");
+          setAccessToken(res.data.access_token);
+          setUser(res.data.user);
+          scheduleRefresh(res.data.expires_in);
+        } catch {
+          setAccessToken(null);
+          setUser(null);
+        }
+      }, leadTime);
+    },
+    [clearTimer],
+  );
+
+  const applySession = useCallback(
+    (data: SessionResponse) => {
+      setAccessToken(data.access_token);
+      setUser(data.user);
+      scheduleRefresh(data.expires_in);
+    },
+    [scheduleRefresh],
+  );
+
+  // On mount, try to resume an existing session from the refresh cookie. A
+  // 401 here just means "not signed in" and is not an error worth surfacing.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await api.post<SessionResponse>("/auth/refresh");
+        if (!cancelled) applySession(res.data);
+      } catch {
+        if (!cancelled) setAccessToken(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applySession]);
+
+  // The axios interceptor calls this when a refresh finally fails.
+  useEffect(() => {
+    setSessionLostHandler(() => {
+      clearTimer();
+      setUser(null);
+      router.replace("/login");
+    });
+    return () => setSessionLostHandler(null);
+  }, [clearTimer, router]);
+
+  useEffect(() => clearTimer, [clearTimer]);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const res = await api.post<SessionResponse>("/auth/login", {
+          email,
+          password,
+        });
+        applySession(res.data);
+      } catch (err) {
+        throw new Error(errorMessage(err, "Unable to sign in"));
+      }
+    },
+    [applySession],
+  );
+
+  const logout = useCallback(async () => {
+    clearTimer();
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Even if the server call fails, drop local state so the browser is
+      // never left believing it is still signed in.
+    }
+    setAccessToken(null);
+    setUser(null);
+    router.replace("/login");
+  }, [clearTimer, router]);
+
+  const can = useCallback(
+    (minimum: Role) => (user ? RANK[user.role] >= RANK[minimum] : false),
+    [user],
+  );
+
+  const value = useMemo(
+    () => ({ user, loading, login, logout, can }),
+    [user, loading, login, logout, can],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+}

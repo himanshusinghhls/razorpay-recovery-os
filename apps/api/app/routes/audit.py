@@ -1,8 +1,17 @@
+import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.session import get_db_session
 from application.audit.repository import PostgresAuditRepository
+from domain.audit.models import AuditEntry, AuditEventType
+from domain.execution.models import ExecutionStatus
+
+from ..core.auth import Principal, get_current_principal, require_role
+from ..db.models import ExecutionRecord, UserRole
+from ..db.session import get_db_session
 
 router = APIRouter(
     prefix="/audit",
@@ -10,9 +19,16 @@ router = APIRouter(
 )
 
 
+class SuccessLogRequest(BaseModel):
+    payment_id: str = Field(min_length=1, max_length=128)
+    amount: int = Field(ge=0, le=100_000_000)
+    customer_id: str = Field(default="cust_direct", max_length=128)
+
+
 @router.get("/{payment_id}")
 async def get_audit_trail(
     payment_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
     session: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -21,10 +37,12 @@ async def get_audit_trail(
     Each entry records one step of the recovery pipeline:
     detection → AI diagnosis → policy decision → execution → reconciliation.
     """
-    repo = PostgresAuditRepository(session)
+    repo = PostgresAuditRepository(session, principal.merchant_id)
     entries = await repo.get_by_payment_id(payment_id)
 
     if not entries:
+        # Same 404 whether the payment belongs to another tenant or does not
+        # exist, so this cannot be used to probe for other merchants' payments.
         raise HTTPException(
             status_code=404,
             detail=f"No audit trail found for payment {payment_id}",
@@ -37,6 +55,7 @@ async def get_audit_trail(
             {
                 "event_type": e.event_type.value,
                 "data": e.data,
+                "actor": e.actor,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
             }
             for e in entries
@@ -46,13 +65,14 @@ async def get_audit_trail(
 
 @router.get("/")
 async def get_recent_audit(
+    principal: Annotated[Principal, Depends(get_current_principal)],
     limit: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
-    Returns the most recent audit log entries across all payments.
+    Returns the most recent audit log entries for the caller's merchant.
     """
-    repo = PostgresAuditRepository(session)
+    repo = PostgresAuditRepository(session, principal.merchant_id)
     entries = await repo.get_recent(limit=limit)
 
     return {
@@ -63,6 +83,7 @@ async def get_recent_audit(
                 "customer_id": e.customer_id,
                 "event_type": e.event_type.value,
                 "data": e.data,
+                "actor": e.actor,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
             }
             for e in entries
@@ -70,27 +91,17 @@ async def get_recent_audit(
     }
 
 
-from pydantic import BaseModel
-import uuid
-from domain.audit.models import AuditEventType, AuditEntry
-from domain.execution.models import ExecutionStatus
-from apps.api.app.db.models import ExecutionRecord
-
-class SuccessLogRequest(BaseModel):
-    payment_id: str
-    amount: int
-    customer_id: str = "cust_direct"
-
 @router.post("/log-success")
 async def log_success_audit(
     request: SuccessLogRequest,
+    principal: Annotated[Principal, Depends(require_role(UserRole.ANALYST))],
     session: AsyncSession = Depends(get_db_session),
 ):
     """
     Logs a successful original payment so it appears in the audit trail.
     Also creates an ExecutionRecord so it appears in the Analytics dashboard.
     """
-    repo = PostgresAuditRepository(session)
+    repo = PostgresAuditRepository(session, principal.merchant_id)
     entry = AuditEntry(
         payment_id=request.payment_id,
         customer_id=request.customer_id,
@@ -98,21 +109,24 @@ async def log_success_audit(
         data={
             "amount": request.amount,
             "status": "success",
-            "message": "Original payment succeeded. No recovery required."
-        }
+            "message": "Original payment succeeded. No recovery required.",
+        },
     )
-    await repo.save(entry)
+    await repo.save(entry, actor=principal.user_id)
 
-    exec_record = ExecutionRecord(
-        execution_id=f"exec_direct_{uuid.uuid4().hex[:8]}",
-        payment_id=request.payment_id,
-        customer_id=request.customer_id,
-        action_type="direct_success",
-        status=ExecutionStatus.SUCCEEDED,
-        message="Original payment succeeded.",
-        external_reference=request.payment_id,
+    session.add(
+        ExecutionRecord(
+            execution_id=f"exec_direct_{uuid.uuid4().hex[:8]}",
+            merchant_id=principal.merchant_id,
+            payment_id=request.payment_id,
+            customer_id=request.customer_id,
+            action_type="direct_success",
+            status=ExecutionStatus.SUCCEEDED,
+            message="Original payment succeeded.",
+            external_reference=request.payment_id,
+            initiated_by=principal.user_id,
+        )
     )
-    session.add(exec_record)
     await session.commit()
 
     return {"status": "logged"}

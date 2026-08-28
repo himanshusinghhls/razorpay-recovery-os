@@ -1,32 +1,43 @@
 import random
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from pathlib import Path
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+import yaml
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
-from ..db.session import get_db_session
-from ..db.models import ExecutionRecord, ReviewRecord, AuditRecord
-
+from application.recovery.service import RecoveryApplicationService
 from domain.decision.models import RecoveryDecision
 from domain.execution.models import ExecutionStatus
 from domain.policy.engine import RecoveryPolicyEngine
 from domain.policy.models import PolicyContext
 from domain.recovery.actions import RecoveryAction, RecoveryActionType
 from domain.review.models import ReviewStatus
-from application.recovery.service import RecoveryApplicationService
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timezone, timedelta
+
+from ..config import PROJECT_ROOT
+from ..core.auth import Principal, get_current_principal
+from ..db.models import AuditRecord, ExecutionRecord, ReviewRecord
+from ..db.session import get_db_session
+
+# Anchored to the project root rather than the process CWD, which previously
+# made this endpoint depend on where uvicorn happened to be launched from.
+TAXONOMY_PATH = PROJECT_ROOT / "domain" / "policy" / "taxonomy.yaml"
+
 
 class PolicySimulateRequest(BaseModel):
     action_type: str
-    amount: int
-    retry_count: int
+    amount: int = Field(ge=0, le=100_000_000)
+    retry_count: int = Field(ge=0, le=100)
     suspicious: bool
-    customer_attempts_today: int
+    customer_attempts_today: int = Field(ge=0, le=1000)
     is_contact_action: bool
-    contact_count: int
-    hours_since_first_failure: Optional[int] = None
+    contact_count: int = Field(ge=0, le=1000)
+    hours_since_first_failure: Optional[int] = Field(default=None, ge=0, le=10_000)
 
 
 router = APIRouter(
@@ -35,57 +46,66 @@ router = APIRouter(
 )
 
 
+@lru_cache(maxsize=1)
+def _load_taxonomy() -> dict:
+    """Parsed once per process — the file is static at runtime."""
+    with open(TAXONOMY_PATH, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
 @router.get("/summary")
 async def get_analytics_summary(
+    principal: Annotated[Principal, Depends(get_current_principal)],
     session: AsyncSession = Depends(get_db_session),
 ):
     """
     Real-time analytics summary powered by actual PostgreSQL data.
 
-    Returns live metrics about recovery performance, policy blocks,
-    pending reviews, and actual monetary amounts recovered.
+    Every aggregate is scoped to the caller's merchant, so one tenant can never
+    see another's recovery volume or transactions.
     """
-    total_stmt = select(func.count()).select_from(ExecutionRecord)
-    total_result = await session.execute(total_stmt)
-    total_executions = total_result.scalar() or 0
+    mid = principal.merchant_id
 
-    success_stmt = select(func.count()).where(
-        ExecutionRecord.status.in_([
-            ExecutionStatus.STARTED,
-            ExecutionStatus.SUCCEEDED,
-        ])
+    # One round trip for the execution-status breakdown instead of three
+    # separate COUNT queries against the same table.
+    status_rows = await session.execute(
+        select(ExecutionRecord.status, func.count())
+        .where(ExecutionRecord.merchant_id == mid)
+        .group_by(ExecutionRecord.status)
     )
-    success_result = await session.execute(success_stmt)
-    successful = success_result.scalar() or 0
+    by_status = {status: count for status, count in status_rows.all()}
 
-    failed_stmt = select(func.count()).where(
-        ExecutionRecord.status == ExecutionStatus.FAILED
+    total_executions = sum(by_status.values())
+    successful = by_status.get(ExecutionStatus.STARTED, 0) + by_status.get(
+        ExecutionStatus.SUCCEEDED, 0
     )
-    failed_result = await session.execute(failed_stmt)
-    failed = failed_result.scalar() or 0
+    failed = by_status.get(ExecutionStatus.FAILED, 0)
 
-    pending_stmt = select(func.count()).where(
-        ReviewRecord.status == ReviewStatus.PENDING
-    )
-    pending_result = await session.execute(pending_stmt)
-    pending_reviews = pending_result.scalar() or 0
+    pending_reviews = (
+        await session.execute(
+            select(func.count()).where(
+                ReviewRecord.merchant_id == mid,
+                ReviewRecord.status == ReviewStatus.PENDING,
+            )
+        )
+    ).scalar() or 0
 
-    audit_stmt = select(func.count()).select_from(AuditRecord)
-    audit_result = await session.execute(audit_stmt)
-    total_audit_entries = audit_result.scalar() or 0
+    total_audit_entries = (
+        await session.execute(
+            select(func.count()).where(AuditRecord.merchant_id == mid)
+        )
+    ).scalar() or 0
 
     recovery_rate = (
-        round(successful / total_executions * 100, 1)
-        if total_executions > 0
-        else 0.0
+        round(successful / total_executions * 100, 1) if total_executions > 0 else 0.0
     )
 
-    recent_stmt = (
+    recent_result = await session.execute(
         select(ExecutionRecord)
+        .where(ExecutionRecord.merchant_id == mid)
         .order_by(ExecutionRecord.created_at.desc())
         .limit(20)
     )
-    recent_result = await session.execute(recent_stmt)
     recent_records = recent_result.scalars().all()
 
     recent_transactions = [
@@ -101,20 +121,32 @@ async def get_analytics_summary(
         for r in recent_records
     ]
 
-    blocked_stmt = select(func.count()).where(
-        ExecutionRecord.status == ExecutionStatus.FAILED,
-        ExecutionRecord.message.ilike("%policy%"),
-    )
-    blocked_result = await session.execute(blocked_stmt)
-    policy_blocks = blocked_result.scalar() or 0
+    policy_blocks = (
+        await session.execute(
+            select(func.count()).where(
+                ExecutionRecord.merchant_id == mid,
+                ExecutionRecord.status == ExecutionStatus.FAILED,
+                ExecutionRecord.message.ilike("%policy%"),
+            )
+        )
+    ).scalar() or 0
 
     unsafe_rate = (
-        round(policy_blocks / total_executions * 100, 2)
-        if total_executions > 0
-        else 0.0
+        round(policy_blocks / total_executions * 100, 2) if total_executions > 0 else 0.0
     )
 
+    # Amount actually put back in play, from the reviews the tenant escalated.
+    recovered_paise = (
+        await session.execute(
+            select(func.coalesce(func.sum(ReviewRecord.amount), 0)).where(
+                ReviewRecord.merchant_id == mid,
+                ReviewRecord.status == ReviewStatus.APPROVED,
+            )
+        )
+    ).scalar() or 0
+
     return {
+        "merchant_id": mid,
         "total_executions": total_executions,
         "successful_recoveries": successful,
         "failed_recoveries": failed,
@@ -122,84 +154,77 @@ async def get_analytics_summary(
         "pending_reviews": pending_reviews,
         "total_audit_entries": total_audit_entries,
         "unsafe_action_rate": unsafe_rate,
+        "approved_recovery_paise": int(recovered_paise),
         "recent_transactions": recent_transactions,
     }
 
 
-@router.post("/simulate-benchmark")
-async def run_benchmark_simulation():
+# Fixed so the published figures are reproducible. The benchmark is a
+# measurement, not a lottery: with the module-level `random` it drew a fresh
+# batch every call, so the headline numbers moved on every run and could never
+# be checked against the ones in the README.
+DEFAULT_BENCHMARK_SEED = 20260824
+
+
+def _run_benchmark(count: int = 50_000, seed: int = DEFAULT_BENCHMARK_SEED) -> dict:
     """
-    50,000 event benchmark simulation.
+    Pure-CPU batch evaluation over a deterministic synthetic batch.
 
-    Uses the policy engine with synthetic events.
-    AI probabilities and event distributions are dynamically loaded
-    from the domain/policy/taxonomy.yaml file.
+    Deliberately synchronous and executed off the event loop by the caller —
+    running this inline blocked every other request for the duration.
     """
-    import yaml
-    from pathlib import Path
-
-    taxonomy_path = Path("domain/policy/taxonomy.yaml")
-    with open(taxonomy_path, "r") as f:
-        taxonomy = yaml.safe_load(f)
-
+    rng = random.Random(seed)
+    taxonomy = _load_taxonomy()
     classes = taxonomy.get("classes", {})
-    reasons = []
-    weights = []
-    prob_map = {}
+
+    reasons: list[str] = []
+    weights: list[float] = []
+    prob_map: dict[str, float] = {}
 
     for reason, cfg in classes.items():
         reasons.append(reason)
         weights.append(cfg.get("simulation_weight", 0.0))
         prob_map[reason] = cfg.get("ai_recovery_probability", 0.0)
 
-    count = 50000
-    events = []
-
-    for i in range(count):
-        reason = random.choices(reasons, weights=weights)[0]
-        amount = random.randint(100, 24000) * 100
-        events.append(
-            {
-                "payment_id": f"pay_synth_{i}",
-                "customer_id": f"cust_synth_{i}",
-                "amount": amount,
-                "failure_reason": reason,
-                "retry_count": random.randint(0, 3),
-            }
-        )
-
     policy_engine = RecoveryPolicyEngine()
     app_service = RecoveryApplicationService(policy_engine=policy_engine)
 
-    baseline_recovered = 0
-    ai_recovered = 0
+    baseline_recovered = 0.0
+    ai_recovered = 0.0
     policy_blocks = 0
     escalations = 0
 
-    for event in events:
-        amount = event["amount"]
-        reason = event["failure_reason"]
+    picks = rng.choices(reasons, weights=weights, k=count)
 
-        if (reason == "temporary_network_timeout" or reason == "insufficient_funds") and event["retry_count"] < 2:
+    for i in range(count):
+        reason = picks[i]
+        amount = rng.randint(100, 24_000) * 100
+        retry_count = rng.randint(0, 3)
+
+        if reason in ("temporary_network_timeout", "insufficient_funds") and retry_count < 2:
             baseline_recovered += amount * 0.5
 
         ai_prob = prob_map.get(reason, 0.0)
-        is_suspicious = (reason == "suspected_fraud")
-        
-        hallucinated = random.random() < 0.04
-        should_retry = ai_prob > 0 and (event["retry_count"] < 2 or hallucinated)
+        is_suspicious = reason == "suspected_fraud"
+
+        hallucinated = rng.random() < 0.04
+        should_retry = ai_prob > 0 and (retry_count < 2 or hallucinated)
 
         action = RecoveryAction(
-            action_type=RecoveryActionType.RETRY_PAYMENT if should_retry else RecoveryActionType.STOP_RECOVERY,
-            payment_id=event["payment_id"],
-            customer_id=event["customer_id"],
+            action_type=(
+                RecoveryActionType.RETRY_PAYMENT
+                if should_retry
+                else RecoveryActionType.STOP_RECOVERY
+            ),
+            payment_id=f"pay_synth_{i}",
+            customer_id=f"cust_synth_{i}",
             amount=amount,
             reason="Simulated AI decision",
         )
 
         decision = RecoveryDecision(
-            payment_id=event["payment_id"],
-            customer_id=event["customer_id"],
+            payment_id=action.payment_id,
+            customer_id=action.customer_id,
             amount=amount,
             recovery_probability=ai_prob,
             expected_recovery=amount * ai_prob,
@@ -210,7 +235,7 @@ async def run_benchmark_simulation():
 
         authorization = app_service.authorize(
             decision=decision,
-            retry_count=event["retry_count"],
+            retry_count=retry_count,
             suspicious=is_suspicious,
         )
 
@@ -228,31 +253,48 @@ async def run_benchmark_simulation():
         else 0
     )
 
-    unsafe_rate = (
-        round(policy_blocks / count * 100, 2)
-        if count > 0
-        else 0.0
-    )
-
     return {
         "total_events": count,
+        "seed": seed,
         "baseline_recovery_paise": baseline_recovered,
         "ai_recovery_paise": ai_recovered,
         "incremental_uplift_percent": round(uplift, 1),
         "policy_blocks": policy_blocks,
         "escalations": escalations,
-        "unsafe_action_rate": unsafe_rate,
+        "unsafe_action_rate": round(policy_blocks / count * 100, 2) if count else 0.0,
     }
 
 
+@router.post("/simulate-benchmark")
+async def run_benchmark_simulation(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    seed: int = Query(
+        default=DEFAULT_BENCHMARK_SEED,
+        description="Change to draw a different synthetic batch",
+    ),
+):
+    """
+    50,000 event benchmark simulation against the deterministic policy engine.
+
+    Same seed always yields the same figures. Offloaded to a worker thread so
+    the API stays responsive while it runs.
+    """
+    return await run_in_threadpool(_run_benchmark, 50_000, seed)
+
+
 @router.post("/simulate-policy")
-async def simulate_policy(req: PolicySimulateRequest):
+async def simulate_policy(
+    req: PolicySimulateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+):
     """
     Playground endpoint: evaluate context against the deterministic policy engine.
     """
     first_failure = None
     if req.hours_since_first_failure is not None:
-        first_failure = datetime.now(timezone.utc) - timedelta(hours=req.hours_since_first_failure)
+        first_failure = datetime.now(timezone.utc) - timedelta(
+            hours=req.hours_since_first_failure
+        )
 
     try:
         action_enum = RecoveryActionType(req.action_type)
@@ -270,8 +312,7 @@ async def simulate_policy(req: PolicySimulateRequest):
         contact_count=req.contact_count,
     )
 
-    engine = RecoveryPolicyEngine()
-    decision = engine.evaluate(context)
+    decision = RecoveryPolicyEngine().evaluate(context)
 
     return {
         "allowed": decision.allowed,
@@ -281,14 +322,10 @@ async def simulate_policy(req: PolicySimulateRequest):
 
 
 @router.get("/taxonomy")
-async def get_taxonomy():
-    import yaml
-    from pathlib import Path
-    
-    taxonomy_path = Path("domain/policy/taxonomy.yaml")
+async def get_taxonomy(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+):
     try:
-        with open(taxonomy_path, "r") as f:
-            taxonomy = yaml.safe_load(f)
-        return taxonomy
-    except Exception as e:
+        return _load_taxonomy()
+    except Exception as e:  # noqa: BLE001
         return {"error": str(e), "classes": {}}

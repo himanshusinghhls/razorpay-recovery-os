@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -11,7 +10,7 @@ from domain.audit.models import AuditEntry, AuditEventType
 
 class AuditRepository(ABC):
     @abstractmethod
-    async def save(self, entry: AuditEntry) -> None:
+    async def save(self, entry: AuditEntry, *, actor: str = "system") -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -24,15 +23,23 @@ class AuditRepository(ABC):
 
 
 class PostgresAuditRepository(AuditRepository):
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+    """
+    Bound to a single merchant so reads can never cross a tenant boundary and
+    writes are always stamped with the owning merchant.
+    """
 
-    async def save(self, entry: AuditEntry) -> None:
+    def __init__(self, session: AsyncSession, merchant_id: str) -> None:
+        self.session = session
+        self.merchant_id = merchant_id
+
+    async def save(self, entry: AuditEntry, *, actor: str = "system") -> None:
         record = AuditRecord(
+            merchant_id=self.merchant_id,
             payment_id=entry.payment_id,
             customer_id=entry.customer_id,
             event_type=entry.event_type,
             data=entry.data,
+            actor=actor,
         )
         self.session.add(record)
         await self.session.flush()
@@ -40,24 +47,24 @@ class PostgresAuditRepository(AuditRepository):
     async def get_by_payment_id(self, payment_id: str) -> list[AuditEntry]:
         stmt = (
             select(AuditRecord)
-            .where(AuditRecord.payment_id == payment_id)
+            .where(
+                AuditRecord.merchant_id == self.merchant_id,
+                AuditRecord.payment_id == payment_id,
+            )
             .order_by(AuditRecord.created_at.asc())
         )
         result = await self.session.execute(stmt)
-        records = result.scalars().all()
-
-        return [self._to_domain(r) for r in records]
+        return [self._to_domain(r) for r in result.scalars().all()]
 
     async def get_recent(self, limit: int = 50) -> list[AuditEntry]:
         stmt = (
             select(AuditRecord)
+            .where(AuditRecord.merchant_id == self.merchant_id)
             .order_by(AuditRecord.created_at.desc())
             .limit(limit)
         )
         result = await self.session.execute(stmt)
-        records = result.scalars().all()
-
-        return [self._to_domain(r) for r in records]
+        return [self._to_domain(r) for r in result.scalars().all()]
 
     @staticmethod
     def _to_domain(record: AuditRecord) -> AuditEntry:
@@ -67,4 +74,5 @@ class PostgresAuditRepository(AuditRepository):
             event_type=record.event_type,
             data=record.data,
             created_at=record.created_at,
+            actor=record.actor,
         )

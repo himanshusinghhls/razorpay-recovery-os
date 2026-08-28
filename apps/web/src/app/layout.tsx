@@ -1,22 +1,26 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+
+import { AuthProvider } from "@/lib/auth-context";
+import { AmbientBackdrop } from "@/components/backdrop";
 import "./globals.css";
 
 const inter = Inter({
-  variable: "--font-geist-sans",
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-geist-mono",
+  variable: "--font-jetbrains",
   subsets: ["latin"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "RecoveryOS — AI Revenue Recovery Agent",
-  description: "Autonomous payment recovery powered by AI diagnosis, deterministic policy guardrails, and Razorpay execution. Built for Razorpay AI Buildathon Track 03.",
+  title: "RecoveryOS — Autonomous Revenue Recovery",
+  description:
+    "Autonomous payment recovery powered by AI diagnosis, deterministic policy guardrails, and Razorpay execution. Built for the Razorpay AI Buildathon.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -28,7 +32,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       </head>
-      <body className="min-h-full flex flex-col bg-[#fafbfc]">{children}</body>
+      <body className="relative min-h-full">
+        <AmbientBackdrop />
+        <AuthProvider>
+          <div className="relative z-10">{children}</div>
+        </AuthProvider>
+      </body>
     </html>
   );
 }

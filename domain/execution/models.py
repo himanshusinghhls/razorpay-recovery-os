@@ -23,3 +23,14 @@ class RecoveryExecution:
     status: ExecutionStatus
     external_reference: Optional[str]
     message: str
+
+    # Required for the per-customer daily stopping rule to work. Previously
+    # this was never persisted, so the rule counted attempts against an empty
+    # customer_id and could never fire.
+    customer_id: str = ""
+
+    # Owning tenant. Set by the caller from the authenticated principal.
+    merchant_id: str = ""
+
+    # User id when a human triggered the recovery, else None.
+    initiated_by: Optional[str] = None

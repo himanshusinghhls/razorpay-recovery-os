@@ -240,8 +240,27 @@ export default function RecoveryOSDashboard() {
         amount: amountPaise,
         failure_reason: reason,
         retry_count: retryCount,
+      }, {
+        headers: { "Idempotency-Key": crypto.randomUUID() }
       });
-      const data = res.data;
+      
+      const jobId = res.data.execution_id;
+      let finalData = null;
+      
+      while (true) {
+        await delay(2000);
+        try {
+          const statusRes = await axios.get(`${API_BASE}/recoveries/status/${jobId}`);
+          if (statusRes.data && statusRes.data.status && statusRes.data.status !== "processing") {
+            finalData = statusRes.data;
+            break;
+          }
+        } catch (pollErr) {
+           console.warn("Polling error", pollErr);
+        }
+      }
+      
+      const data = finalData;
 
       await delay(400);
       setPipelineStage("policy");
@@ -300,8 +319,27 @@ export default function RecoveryOSDashboard() {
         customer_id: "cust_demo_001",
         amount: amountPaise,
         failure_reason: failureReason,
+      }, {
+        headers: { "Idempotency-Key": crypto.randomUUID() }
       });
-      const data = res.data;
+      
+      const jobId = res.data.execution_id;
+      let finalData = null;
+      
+      while (true) {
+        await delay(2000);
+        try {
+          const statusRes = await axios.get(`${API_BASE}/recoveries/status/${jobId}`);
+          if (statusRes.data && statusRes.data.status && statusRes.data.status !== "processing") {
+            finalData = statusRes.data;
+            break;
+          }
+        } catch (pollErr) {
+           console.warn("Polling error", pollErr);
+        }
+      }
+      
+      const data = finalData;
 
       await delay(400);
       setPipelineStage("policy");

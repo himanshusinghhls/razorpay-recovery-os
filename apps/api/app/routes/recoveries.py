@@ -92,224 +92,51 @@ def check_rate_limit(request: Request):
     _ip_hits[ip].append(now)
 
 
-@router.post("/execute", response_model=RecoveryResponse, dependencies=[Depends(check_rate_limit)])
+@router.post("/execute", response_model=dict, dependencies=[Depends(check_rate_limit)])
 async def execute_recovery(
+    request: Request,
     payload: RecoveryRequest,
-    session: AsyncSession = Depends(get_db_session),
-    app_service: RecoveryApplicationService = Depends(get_recovery_app_service),
-    orchestrator: RecoveryExecutionOrchestrator = Depends(get_execution_orchestrator),
-    audit: AuditService = Depends(get_audit_service),
-    review_service: ReviewService = Depends(get_review_service),
-    repo: PostgresExecutionRepository = Depends(get_execution_repository),
-    agent: RecoveryAnalystAgent = Depends(get_recovery_analyst_agent),
 ):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Idempotency-Key header is required")
+
+    redis = request.app.state.arq_pool
+    cache_key = f"idempotency:{payload.payment_id}:{idempotency_key}"
+    
+    cached_job_id = await redis.get(cache_key)
+    if cached_job_id:
+        return {"execution_id": cached_job_id.decode("utf-8"), "status": "processing", "message": "Job already queued (Idempotency match)"}
+
     execution_id = f"exec_{uuid.uuid4().hex[:16]}"
-    _start = _time.time()
+    
+    await redis.set(cache_key, execution_id, ex=86400) # 24 hours TTL
 
-    try:
-        await audit.log_failure_detected(
-            payment_id=payload.payment_id,
-            customer_id=payload.customer_id,
-            amount=payload.amount,
-            failure_reason=payload.failure_reason,
-        )
+    await redis.enqueue_job("process_recovery_task", payload.model_dump(), execution_id, _job_id=execution_id)
 
-        prev_executions = await session.execute(
-            select(ExecutionRecord)
-            .where(ExecutionRecord.payment_id == payload.payment_id)
-            .order_by(ExecutionRecord.created_at.desc())
-            .limit(5)
-        )
-        history_records = prev_executions.scalars().all()
-        if history_records:
-            customer_history = "; ".join(
-                f"{r.action_type}:{r.status.value} at {r.created_at}"
-                for r in history_records
-            )
-        else:
-            customer_history = "No prior recovery attempts"
+    return {
+        "execution_id": execution_id,
+        "status": "processing",
+        "message": "Recovery queued for async processing"
+    }
 
-        decision = await agent.analyze(
-            payment_id=payload.payment_id,
-            customer_id=payload.customer_id,
-            amount=payload.amount,
-            failure_reason=payload.failure_reason,
-            customer_history=customer_history,
-        )
+from arq.jobs import Job
 
-        await audit.log_ai_diagnosis(
-            payment_id=payload.payment_id,
-            customer_id=payload.customer_id,
-            diagnosis=decision.diagnosis,
-            confidence=decision.confidence,
-            recovery_probability=decision.recovery_probability,
-            recommended_action=(
-                decision.action.action_type.value if decision.action else "none"
-            ),
-            expected_recovery=decision.expected_recovery,
-            raw_prompt=decision.raw_prompt,
-        )
+@router.get("/status/{job_id}")
+async def get_job_status(request: Request, job_id: str):
+    redis = request.app.state.arq_pool
+    job = Job(job_id, redis)
+    status = await job.status()
+    
+    if status.value == "complete":
+        result = await job.result()
+        return result
+    elif status.value == "not_found":
+        raise HTTPException(status_code=404, detail="Job not found")
+    else:
+        return {"execution_id": job_id, "status": "processing", "message": f"Job is {status.value}"}
 
-        retry_count, first_failure_at, customer_attempts_today = (
-            await _get_retry_context(
-                session, payload.payment_id, payload.customer_id
-            )
-        )
 
-        is_suspicious = payload.failure_reason in (
-            "suspected_fraud",
-            "fraud_detected",
-            "account_takeover",
-        )
-
-        authorization = app_service.authorize(
-            decision=decision,
-            retry_count=retry_count,
-            suspicious=is_suspicious,
-            first_failure_at=first_failure_at,
-            customer_attempts_today=customer_attempts_today,
-        )
-
-        await audit.log_policy_decision(
-            payment_id=payload.payment_id,
-            customer_id=payload.customer_id,
-            allowed=authorization.policy_decision.allowed,
-            reason=authorization.policy_decision.reason,
-            requires_human_approval=authorization.policy_decision.requires_human_approval,
-            retry_count=retry_count,
-        )
-
-        if not authorization.executable:
-            if authorization.policy_decision.requires_human_approval:
-                review = await review_service.create_review(
-                    payment_id=payload.payment_id,
-                    customer_id=payload.customer_id,
-                    amount=payload.amount,
-                    action_type=(
-                        decision.action.action_type.value
-                        if decision.action
-                        else "unknown"
-                    ),
-                    policy_reason=authorization.policy_decision.reason,
-                    ai_diagnosis=decision.diagnosis,
-                    ai_confidence=decision.confidence,
-                )
-
-                await audit.log_escalation(
-                    payment_id=payload.payment_id,
-                    customer_id=payload.customer_id,
-                    review_id=review.review_id,
-                    reason=authorization.policy_decision.reason,
-                )
-
-                record = RecoveryExecution(
-                    execution_id=execution_id,
-                    payment_id=payload.payment_id,
-                    action_type=(
-                        decision.action.action_type.value
-                        if decision.action
-                        else "unknown"
-                    ),
-                    status=ExecutionStatus.FAILED,
-                    external_reference=None,
-                    message=(
-                        f"Escalated to human review: "
-                        f"{authorization.policy_decision.reason}"
-                    ),
-                )
-                await repo.create(record)
-
-                await session.commit()
-                return RecoveryResponse(
-                    execution_id=execution_id,
-                    status="escalated",
-                    action_type=record.action_type,
-                    provider_reference=review.review_id,
-                    message=(
-                        f"Escalated to human review: "
-                        f"{authorization.policy_decision.reason}"
-                    ),
-                    pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
-                )
-
-            await audit.log_stopping_rule(
-                payment_id=payload.payment_id,
-                customer_id=payload.customer_id,
-                rule_name="policy_block",
-                reason=authorization.policy_decision.reason,
-            )
-
-            record = RecoveryExecution(
-                execution_id=execution_id,
-                payment_id=payload.payment_id,
-                action_type=(
-                    decision.action.action_type.value
-                    if decision.action
-                    else "unknown"
-                ),
-                status=ExecutionStatus.FAILED,
-                external_reference=None,
-                message=(
-                    f"Policy Blocked: {authorization.policy_decision.reason}"
-                ),
-            )
-            await repo.create(record)
-
-            await session.commit()
-            return RecoveryResponse(
-                execution_id=execution_id,
-                status=ExecutionStatus.FAILED.value,
-                action_type=record.action_type,
-                provider_reference=None,
-                message=record.message,
-                pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
-            )
-
-        execution_result = await orchestrator.execute(authorization)
-
-        final_status = (
-            ExecutionStatus.STARTED
-            if execution_result.success
-            else ExecutionStatus.FAILED
-        )
-        record = RecoveryExecution(
-            execution_id=execution_id,
-            payment_id=payload.payment_id,
-            action_type=execution_result.action_type,
-            status=final_status,
-            external_reference=execution_result.external_reference,
-            message=execution_result.message,
-        )
-        await repo.create(record)
-
-        await audit.log_execution_result(
-            payment_id=payload.payment_id,
-            customer_id=payload.customer_id,
-            execution_id=execution_id,
-            success=execution_result.success,
-            action_type=execution_result.action_type,
-            message=execution_result.message,
-            external_reference=execution_result.external_reference,
-        )
-
-        await session.commit()
-        return RecoveryResponse(
-            execution_id=execution_id,
-            status=final_status.value,
-            action_type=execution_result.action_type,
-            provider_reference=execution_result.external_reference,
-            message=execution_result.message,
-            pipeline_latency_ms=round((_time.time() - _start) * 1000, 2),
-        )
-
-    except Exception as e:
-        import logging
-        logger = logging.getLogger("recoveryos.api")
-        logger.exception("Recovery execution failed for %s", payload.payment_id)
-        raise HTTPException(
-            status_code=500,
-            detail="Recovery execution failed. Check server logs for details.",
-        )
 
 
 @router.get("/{execution_id}")

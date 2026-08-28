@@ -57,3 +57,6 @@ uvloop==0.22.1
 watchfiles==1.2.0
 websockets==16.1.1
 PyJWT==2.8.0
+arq==0.26.0
+redis==5.0.1
+tenacity==8.2.3

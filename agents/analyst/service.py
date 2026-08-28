@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 from google import genai
 from google.genai import types
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from apps.api.app.config import settings
 from agents.analyst.schemas import AIRecoveryDiagnosis
@@ -86,6 +87,24 @@ class RecoveryAnalystAgent:
 
         self.client = genai.Client(api_key=api_key)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
+    async def _call_gemini(self, prompt: str) -> AIRecoveryDiagnosis:
+        response = await self.client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=AIRecoveryDiagnosis,
+                temperature=settings.gemini_temperature,
+            ),
+        )
+        return response.parsed
+
     async def analyze(
         self,
         payment_id: str,
@@ -105,17 +124,7 @@ class RecoveryAnalystAgent:
         )
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model=settings.gemini_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=AIRecoveryDiagnosis,
-                    temperature=settings.gemini_temperature,
-                ),
-            )
-
-            ai_result = response.parsed
+            ai_result = await self._call_gemini(prompt)
 
             action_enum = RecoveryActionType(ai_result.action.action_type)
             action = RecoveryAction(
@@ -142,6 +151,6 @@ class RecoveryAnalystAgent:
 
         except Exception:
             logger.warning(
-                "Gemini call failed for %s — using taxonomy fallback", payment_id, exc_info=True
+                "Gemini call failed for %s after retries — using taxonomy fallback", payment_id, exc_info=True
             )
             return _taxonomy_fallback(payment_id, customer_id, amount, safe_reason)

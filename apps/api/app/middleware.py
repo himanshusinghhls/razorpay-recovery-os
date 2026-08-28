@@ -9,8 +9,10 @@ from .config import settings
 
 logger = logging.getLogger("recoveryos.request")
 
+import jwt
+
 OPEN_PATHS = {"/health", "/ready", "/", "/docs", "/openapi.json", "/redoc"}
-OPEN_PREFIXES = ("/api/v1/webhooks", "/api/v1/recoveries/create-order")
+OPEN_PREFIXES = ("/api/v1/webhooks", "/api/v1/recoveries/create-order", "/api/v1/auth")
 
 
 from collections import defaultdict
@@ -19,8 +21,8 @@ RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 100
 _rate_limits = defaultdict(list)
 
-class APIKeyAuthMiddleware(BaseHTTPMiddleware):
-    """Validates X-API-Key header on mutable (POST/PUT/DELETE) endpoints and enforces rate limits."""
+class JWTAuthMiddleware(BaseHTTPMiddleware):
+    """Validates JWT on mutable (POST/PUT/DELETE) endpoints and enforces rate limits."""
 
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else "unknown"
@@ -43,11 +45,25 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if path in OPEN_PATHS or any(path.startswith(p) for p in OPEN_PREFIXES):
             return await call_next(request)
 
-        api_key = request.headers.get("X-API-Key")
-        if not api_key or api_key != settings.api_key:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Missing or invalid API key"},
+                content={"detail": "Missing or invalid Authorization header"},
+            )
+            
+        token = auth_header.split(" ")[1]
+        try:
+            jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        except jwt.ExpiredSignatureError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Token has expired"},
+            )
+        except jwt.InvalidTokenError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid token"},
             )
 
         return await call_next(request)

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     api_key: str = Field(..., description="API key required for authenticating requests (MUST be in .env)")
 
+    jwt_secret_key: str = Field(..., description="JWT Secret Key from env")
+    jwt_algorithm: str = Field(default="HS256", description="JWT Algorithm")
+
     database_url: str = Field(..., description="PostgreSQL connection string from env")
 
     next_public_api_url: str = Field(default="http://localhost:8000")

@@ -10,7 +10,8 @@ from .routes.recoveries import router as recoveries_router
 from .routes.analytics import router as analytics_router
 from .routes.audit import router as audit_router
 from .routes.reviews import router as reviews_router
-from .middleware import APIKeyAuthMiddleware, StructuredLoggingMiddleware
+from .routes.auth import router as auth_router
+from .middleware import JWTAuthMiddleware, StructuredLoggingMiddleware
 
 
 app = FastAPI(
@@ -20,7 +21,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(APIKeyAuthMiddleware)
+app.add_middleware(JWTAuthMiddleware)
 app.add_middleware(StructuredLoggingMiddleware)
 
 app.add_middleware(
@@ -54,6 +55,7 @@ app.include_router(audit_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(reviews_router, prefix="/api/v1")
 app.include_router(safety_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])

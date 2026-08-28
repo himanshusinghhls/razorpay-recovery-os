@@ -16,7 +16,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1`
   : "http://127.0.0.1:8000/api/v1";
 
-axios.defaults.headers.common["X-API-Key"] = "ros_demo_key_2026";
+// X-API-Key removed, we now use JWT Authorization header
 
 type PipelineStage = "idle" | "detect" | "diagnose" | "policy" | "execute" | "result";
 type PipelineResult = "success" | "escalated" | "blocked" | "error" | null;
@@ -46,6 +46,23 @@ export default function RecoveryOSDashboard() {
   const [activeTab, setActiveTab] = useState<"live" | "benchmark" | "reviews" | "audit" | "playground" | "taxonomy" | "safety">("live");
 
 
+
+  const [isAuthenticating, setIsAuthenticating] = useState(true);
+
+  useEffect(() => {
+    const authenticate = async () => {
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_INTERNAL_API_KEY || "";
+        const res = await axios.post(`${API_BASE}/auth/token`, { api_key: apiKey });
+        const token = res.data.access_token;
+        axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+        setIsAuthenticating(false);
+      } catch (e) {
+        console.error("Authentication failed", e);
+      }
+    };
+    authenticate();
+  }, []);
 
   const [safetyResults, setSafetyResults] = useState<any[]>([]);
   const [safetyLoading, setSafetyLoading] = useState(false);
@@ -105,10 +122,11 @@ export default function RecoveryOSDashboard() {
   }, []);
 
   useEffect(() => {
+    if (isAuthenticating) return;
     fetchAnalytics();
     const iv = setInterval(fetchAnalytics, 8000);
     return () => clearInterval(iv);
-  }, [fetchAnalytics]);
+  }, [fetchAnalytics, isAuthenticating]);
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 

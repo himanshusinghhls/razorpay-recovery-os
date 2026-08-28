@@ -9,8 +9,19 @@ async def reset():
     print("Dropping all tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-        print("Recreating all tables...")
-        await conn.run_sync(Base.metadata.create_all)
+        print("Running Alembic upgrade...")
+    await engine.dispose()
+    
+    import subprocess
+    import os
+    api_dir = os.path.join(os.getcwd(), "apps", "api")
+    alembic_bin = os.path.join(api_dir, ".venv", "bin", "alembic")
+    subprocess.run(
+        [alembic_bin, "-c", "alembic.ini", "upgrade", "head"], 
+        cwd=api_dir,
+        env={**os.environ, "PYTHONPATH": os.path.join(os.getcwd())},
+        check=True
+    )
     print("Database reset complete.")
     await engine.dispose()
 

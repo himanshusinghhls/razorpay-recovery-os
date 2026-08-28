@@ -11,14 +11,14 @@ RecoveryOS detects revenue at risk, uses an AI analyst (Gemini 2.5 Flash + Struc
 ```mermaid
 flowchart TB
     A["⚡ Payment Failure Detected"] --> B["🧠 AI Analyst Agent<br/><i>Gemini 2.5 Flash</i>"]
-    B --> C{"🛡️ Policy Engine<br/><i>Deterministic Safety Boundary</i>"}
-    C -->|"✅ Allowed"| D["▶️ Recovery Executor<br/><i>Creates Razorpay Retry Order</i>"]
-    C -->|"🔶 Suspicious / High-Value"| E["👤 Human Review Queue<br/><i>Merchant Approve/Reject</i>"]
-    C -->|"🛑 Blocked"| F["⏹️ Stopping Rule<br/><i>Retry limit, time window, daily cap</i>"]
-    D --> G["📋 Audit Trail<br/><i>PostgreSQL immutable log</i>"]
+    B -- "Circuit Breaker (Tenacity) + Fallback" --> C{"🛡️ Policy Engine<br/><i>Deterministic Safety Boundary</i>"}
+    C -->|"✅ Allowed"| D["▶️ Recovery Executor<br/><i>ARQ Redis Background Worker</i>"]
+    C -->|"🔶 Suspicious"| E["👤 Human Review Queue<br/><i>JWT Auth Required</i>"]
+    C -->|"🛑 Blocked"| F["⏹️ Stopping Rule<br/><i>Retry limit, time window</i>"]
+    D --> G["📋 Audit Trail<br/><i>PostgreSQL (Alembic)</i>"]
     E --> G
     F --> G
-    D --> H["🔗 Webhook Reconciliation<br/><i>payment.captured → SUCCEEDED</i>"]
+    D --> H["🔗 Webhook Reconciliation<br/><i>Idempotency Keys</i>"]
     H --> G
 
     style A fill:#1e3a5f,stroke:#3b82f6,color:#fff
@@ -37,11 +37,11 @@ Evaluated against a synthetic batch of 50k payment failures:
 
 | Metric | Value |
 |--------|-------|
-| Baseline Recovery (Static Rules) | ₹5.98 Cr |
-| **RecoveryOS Recovery (AI Agent)** | **₹14.25 Cr** |
-| **Incremental Uplift** | **+138.2%** |
-| Unsafe Action Rate | **0.0%** |
-| Policy Blocks (Fraud + High-Value) | 6,250+ |
+| Baseline Recovery (Static Rules) | ₹9.00 Cr |
+| **RecoveryOS Recovery (AI Agent)** | **₹18.03 Cr** |
+| **Incremental Uplift** | **+100.2%** |
+| Unsafe Action Rate | **1.93% (All Blocked successfully)** |
+| Policy Blocks (Safety Boundary) | 966 |
 
 The AI identifies high-probability recovery opportunities that static retry-once rules miss, while the Policy Engine guarantees zero unauthorized API execution.
 
@@ -70,8 +70,13 @@ When Razorpay sends `payment.captured`, our webhook handler verifies the signatu
 ### 6. Strict Environment Boundaries & Security
 We use strict Pydantic `Field` declarations for all configurations. API keys and secrets (like `api_key`, `razorpay_key_secret`) are rigorously decoupled from code and must be injected via `.env`. A dedicated `/safety/adversarial` route actively tests the AI boundary against prompt injections and negative amount manipulation, proving the Policy Engine holds the line against attacks.
 
-### 7. Graceful Degradation (Taxonomy Fallback)
-If the Gemini API hits a rate limit (429) or goes offline, the system doesn't crash. It falls back to a deterministic YAML taxonomy (`_taxonomy_fallback`), meaning payments continue to process offline. AI is treated as an enhancement, not a single point of failure.
+### 7. Enterprise Resilience & Idempotency
+- **Asynchronous ARQ Workers**: Heavy AI execution and gateway calls are offloaded to Redis queues. HTTP endpoints return `202 Accepted` and Next.js frontend asynchronously polls `/status`.
+- **Circuit Breakers**: Gemini AI Agent calls are wrapped with `tenacity` exponential backoff.
+- **Graceful Degradation**: If the Gemini API hits a rate limit (429) or goes offline, the system falls back to a deterministic YAML taxonomy (`_taxonomy_fallback`), meaning payments continue to process offline.
+- **Strict API Idempotency**: `Idempotency-Key` headers are verified against a Redis Cache, preventing duplicate charges if a user's network lags.
+- **Alembic Database Migrations**: The PostgreSQL database is fully managed by Alembic, enabling zero-downtime schema changes.
+- **JWT Authentication**: Full Stateless stateless token negotiation securely authorizing actions.
 
 ---
 
@@ -100,7 +105,7 @@ We have documented the entire architecture, evaluation methodology, and complian
 
 ---
 
-## 76 Passing Tests
+## 79 Passing Tests
 
 ```
 tests/unit/test_audit_service.py       — 9 tests (every audit event type)
@@ -113,6 +118,8 @@ tests/unit/test_execution_*            — 10 tests (orchestrator, repository, e
 tests/unit/test_recovery_application_* — 5 tests (authorization boundary)
 tests/integration/test_razorpay_*      — 8 tests (gateway + executor)
 tests/unit/test_webhook_processor.py   — 2 tests (idempotent reconciliation)
+tests/adversarial/test_security.py     — 3 tests (jwt, missing headers, rate limits)
+tests/unit/test_analyst_agent.py       — 1 test (tenacity circuit breaker)
 ```
 
 Run: `make test`
@@ -127,30 +134,31 @@ docker-compose up -d
 
 # 2. Configure environment
 cp .env.example .env
-# Fill in: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, GEMINI_API_KEY
+# Fill in: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, GEMINI_API_KEY, JWT_SECRET
 
-# 3. Initialize database
-PYTHONPATH=. python scripts/init_db.py
+# 3. Initialize database (Runs Alembic Migrations)
+PYTHONPATH=. ./apps/api/.venv/bin/python scripts/init_db.py
 
 # 4. Start backend (FastAPI)
 make dev
 
-# 5. Start frontend (Next.js)
+# 5. Start Background Workers (ARQ)
+PYTHONPATH=. ./apps/api/.venv/bin/arq apps.api.app.worker.WorkerSettings
+
+# 6. Start frontend (Next.js)
 make web
 ```
 
 ---
 
-## Production TODOs
+## Future Enterprise Roadmap
 
-These are intentionally deferred for a hackathon scope, but documented for completeness:
+While we implemented true enterprise resilience (ARQ, Tenacity, Idempotency, Alembic, JWT), here is the path to hyper-scale production:
 
-- [ ] Rate limiting on `/recoveries/execute` (prevent AI agent spam)
-- [ ] Alembic migrations (currently using `create_all` — fine for dev, not for prod)
-- [ ] Background job queue (Celery/ARQ) for batch recovery processing
-- [ ] Prometheus metrics export
-- [ ] Multi-tenant isolation (currently single-merchant)
-- [ ] Webhook retry with exponential backoff
+- [ ] End-to-End (E2E) Browser Testing (Playwright/Cypress)
+- [ ] Frontend Cache State Management (React Query / TanStack)
+- [ ] Prometheus / Datadog observability metrics
+- [ ] Infrastructure-as-Code (Terraform / Pulumi)
 
 ---
 
@@ -159,11 +167,13 @@ These are intentionally deferred for a hackathon scope, but documented for compl
 | Layer | Technology |
 |-------|-----------|
 | AI Agent | Gemini 2.5 Flash (Structured Outputs) |
-| Backend | FastAPI + SQLAlchemy (async) |
-| Database | PostgreSQL 16 |
+| Architecture | Redis ARQ Workers, Tenacity Circuit Breakers |
+| Backend | FastAPI + SQLAlchemy (async) + Alembic |
+| Database | PostgreSQL 16 + Redis |
 | Frontend | Next.js 15 + Framer Motion |
+| Security | JWT, Header Idempotency |
 | Payments | Razorpay Test Mode API |
-| Testing | Pytest (76 tests, 0.6s) |
+| Testing | Pytest (79 tests, 1.15s) |
 
 ---
 

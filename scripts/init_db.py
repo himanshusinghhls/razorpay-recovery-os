@@ -6,25 +6,23 @@ Run with:
 """
 
 import asyncio
+import os
+import subprocess
 import sys
 
-sys.path.insert(0, ".")
-
-from apps.api.app.db.session import engine
-from apps.api.app.db.models import Base
-
-
-async def init_models():
-    print("Creating database tables...")
-    print(f"  Engine URL: {engine.url}")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    tables = list(Base.metadata.tables.keys())
-    print(f"  Tables: {', '.join(tables)}")
-    print("Tables created successfully.")
-    await engine.dispose()
-
+async def init_db():
+    print("Running database migrations via Alembic...")
+    
+    api_dir = os.path.join(os.getcwd(), "apps", "api")
+    alembic_bin = os.path.join(api_dir, ".venv", "bin", "alembic")
+    
+    subprocess.run(
+        [alembic_bin, "-c", "alembic.ini", "upgrade", "head"], 
+        cwd=api_dir,
+        env={**os.environ, "PYTHONPATH": os.path.join(os.getcwd())},
+        check=True
+    )
+    print("Database initialized successfully.")
 
 if __name__ == "__main__":
-    asyncio.run(init_models())
+    asyncio.run(init_db())

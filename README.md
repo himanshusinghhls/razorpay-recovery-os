@@ -211,19 +211,18 @@ The project includes a robust, production-grade test suite covering every layer 
 
 ```
 tests/e2e/test_recovery_pipeline.py    — 12 tests (health, RBAC auth flow, idempotency, webhook signature verification, validation)
-tests/unit/test_audit_service.py       — 9 tests (every audit event type)
+tests/adversarial/test_security.py     — 19 tests (auth, JWT forgery, alg=none, token-type confusion, public-read regressions)
+tests/unit/test_execution_*            — 17 tests (orchestrator, repository, boundary, executor)
 tests/unit/test_stopping_rules.py      — 10 tests (time window, daily cap, priorities)
-tests/unit/test_review_models.py       — 3 tests (review lifecycle)
+tests/unit/test_audit_service.py       — 9 tests (every audit event type)
+tests/integration/test_razorpay_*      — 8 tests (gateway + executor)
 tests/unit/test_policy_engine.py       — 7 tests (all safety rules)
 tests/unit/test_recovery_actions.py    — 5 tests (domain model invariants)
 tests/unit/test_recovery_decision.py   — 5 tests (probability bounds)
-tests/unit/test_execution_*            — 10 tests (orchestrator, repository, executor)
 tests/unit/test_recovery_application_* — 5 tests (authorization boundary)
-tests/integration/test_razorpay_*      — 8 tests (gateway + executor)
+tests/unit/test_razorpay_verification.py— 4 tests (webhook signature checks)
+tests/unit/test_review_models.py       — 3 tests (review lifecycle)
 tests/unit/test_webhook_processor.py   — 2 tests (idempotent reconciliation)
-tests/adversarial/test_security.py     — 19 tests (auth, JWT forgery, alg=none,
-                                          token-type confusion, public-read
-                                          regressions, headers, webhook signature)
 tests/unit/test_analyst_agent.py       — 1 test (tenacity circuit breaker)
 ```
 
@@ -246,14 +245,14 @@ Run: `make test`
 
 | Layer | Technology |
 |-------|-----------|
-| AI Agent | Gemini 2.5 Flash (Structured Outputs) |
+| AI Agent | Gemini 3.1 Pro (High) (Structured Outputs) |
 | Architecture | Redis ARQ workers, Tenacity circuit breakers |
 | Backend | FastAPI + SQLAlchemy (async) + Alembic |
 | Database | PostgreSQL 16 + Redis 7 |
-| Frontend | Next.js 16 + React 19 + Framer Motion + Tailwind 4 |
+| Frontend | Next.js 15 + React 19 + Framer Motion + Tailwind 4 |
 | Auth | Argon2id, JWT access + rotating refresh tokens, RBAC |
 | Payments | Razorpay Test Mode API |
-| Testing | Pytest (95 tests) |
+| Testing | Pytest (107 tests) |
 
 ---
 

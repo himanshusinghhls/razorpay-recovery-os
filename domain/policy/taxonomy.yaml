@@ -70,7 +70,7 @@ classes:
   suspected_fraud:
     category: prohibited
     recovery_class: PROHIBITED
-    default_action: escalate_human
+    default_action: escalate_to_merchant
     allow_contact: false
     max_retries: 0
     reason_code: RISK_ESCALATE
@@ -113,4 +113,6 @@ scoring:
 allowed_actions:
   - retry_payment
   - send_payment_link
-  - escalate_human
+  - send_reminder
+  - escalate_to_merchant
+  - stop_recovery

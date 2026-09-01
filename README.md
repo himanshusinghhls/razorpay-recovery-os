@@ -15,7 +15,7 @@ flowchart TB
     end
 
     subgraph Intelligence
-        B --> C["🧠 AI Analyst Agent<br/><i>Gemini 3.1 Pro (High)</i>"]
+        B --> C["🧠 AI Analyst Agent<br/><i>Gemini 2.5 Flash</i>"]
         C -- "Uses 80-line prompt with<br/>Chain-of-Thought & Structural Delimiters" --> D{"🛡️ Policy Engine<br/><i>Deterministic Safety Boundary</i>"}
         C -- "Fallback on 429/Timeout" --> E["Fallback Taxonomy Config"]
         E --> D
@@ -245,7 +245,7 @@ Run: `make test`
 
 | Layer | Technology |
 |-------|-----------|
-| AI Agent | Gemini 3.1 Pro (High) (Structured Outputs) |
+| AI Agent | Gemini 2.5 Flash (Structured Outputs) |
 | Architecture | Redis ARQ workers, Tenacity circuit breakers |
 | Backend | FastAPI + SQLAlchemy (async) + Alembic |
 | Database | PostgreSQL 16 + Redis 7 |

@@ -28,9 +28,9 @@ DEMO_MERCHANT = {
 
 # (env var, email, full name, role)
 DEMO_USERS = [
-    ("SEED_ADMIN_PASSWORD", "admin@acmecommerce.in", "Priya Nair", UserRole.ADMIN),
-    ("SEED_ANALYST_PASSWORD", "analyst@acmecommerce.in", "Rohan Mehta", UserRole.ANALYST),
-    ("SEED_VIEWER_PASSWORD", "viewer@acmecommerce.in", "Sana Kulkarni", UserRole.VIEWER),
+    ("SEED_ADMIN_PASSWORD", "admin@acmecommerce.in", "Himanshu", UserRole.ADMIN),
+    ("SEED_ANALYST_PASSWORD", "analyst@acmecommerce.in", "Anjali", UserRole.ANALYST),
+    ("SEED_VIEWER_PASSWORD", "viewer@acmecommerce.in", "Krishna", UserRole.VIEWER),
 ]
 
 

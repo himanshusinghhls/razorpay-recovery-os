@@ -1,4 +1,4 @@
-.PHONY: help setup dev worker web infra db-init db-reset seed test test-unit test-integration benchmark lint format clean
+.PHONY: help setup dev worker web infra db-init db-reset seed seed-db test test-unit test-integration benchmark lint format clean
 
 PY := ./apps/api/.venv/bin/python
 PIP := ./apps/api/.venv/bin/pip
@@ -46,9 +46,13 @@ db-reset:
 	$(MAKE) infra
 	$(MAKE) db-init
 	$(MAKE) seed
+	$(MAKE) seed-db
 
 seed:
 	PYTHONPATH=. $(PY) scripts/seed_users.py
+
+seed-db:
+	PYTHONPATH=. $(PY) scripts/seed_db.py
 
 # ---- Development ----
 

@@ -78,6 +78,8 @@ The AI is strictly constrained (via Structured Outputs) to propose actions from 
 
 1. `retry_payment`: Silently retry a transient error.
 2. `send_payment_link`: Generate a new checkout link for a dead instrument.
-3. `escalate_human`: Immediately block and route to the escalation queue.
+3. `send_reminder`: Nudge the customer to complete payment.
+4. `escalate_to_merchant`: Route to the merchant for manual intervention.
+5. `stop_recovery`: Halt all recovery attempts (e.g., confirmed fraud).
 
 The AI cannot invent new verbs or bypass the `RecoveryActionType` enum.

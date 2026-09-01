@@ -22,6 +22,9 @@ from application.execution.result import (
 from application.execution.razorpay import (
     RazorpayRecoveryExecutor,
 )
+from application.execution.postgres_repository import (
+    PostgresExecutionRepository,
+)
 
 __all__ = [
     "DryRunRecoveryExecutor",

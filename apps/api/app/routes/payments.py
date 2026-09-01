@@ -1,7 +1,10 @@
+from typing import Annotated
+
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..config import settings
+from ..core.auth import Principal, get_current_principal
 from integrations.razorpay.verification import (
     RazorpaySignatureVerifier,
 )
@@ -22,6 +25,7 @@ class VerifyPaymentRequest(BaseModel):
 @router.post("/verify")
 async def verify_payment(
     request: VerifyPaymentRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ):
     verifier = RazorpaySignatureVerifier(
         settings.razorpay_key_secret,

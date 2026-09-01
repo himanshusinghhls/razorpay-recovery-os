@@ -27,6 +27,7 @@ Every proposed action must pass 9 sequential gates. A failure at any gate instan
 
 1.  **Immutable Audit Log**: Every single step (detection, AI diagnosis, policy decision, execution result) is appended to the PostgreSQL `audit_log` table. Entries are never updated or deleted.
 2.  **Idempotent Execution**: Webhooks are deduplicated using a composite key (`event_id` + `provider`). The recovery executor generates unique idempotency keys for Razorpay API calls, ensuring a network blip doesn't cause a double-charge.
+3.  **Comprehensive E2E Testing**: All security boundaries, role-based access controls (RBAC), and idempotency checks are continuously verified by a suite of end-to-end tests that mock infrastructure to prove API layer resilience.
 
 ## PII & Data Privacy
 

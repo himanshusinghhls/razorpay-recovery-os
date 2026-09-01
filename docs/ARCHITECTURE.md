@@ -58,7 +58,7 @@ RecoveryOS manages state across three distinct layers:
 
 ## Security & Graceful Degradation
 
-- **Adversarial Resiliency:** A dedicated testing suite (`/safety/adversarial`) attacks the API with prompt injections, negative amounts, and fake fraud events to guarantee the Policy Engine boundaries hold against malicious actors.
+- **Adversarial Resiliency:** A dedicated testing suite (`/safety/adversarial`) attacks the API with prompt injections, negative amounts, and fake fraud events. The LLM prompt itself uses strict structural boundaries (`<instructions>`, `<input>`) as an additional layer of defense against prompt injection, alongside the deterministic Policy Engine.
 - **Graceful Fallback:** If the Gemini API hits a rate limit (429) or fails, the application doesn't crash. It falls back to a deterministic taxonomy configuration to safely score and route failures offline.
 - **Environment Isolation:** Secrets and keys are not hardcoded. Pydantic `Field(...)` requirements strictly enforce `.env` configuration prior to the backend booting.
 
@@ -71,6 +71,7 @@ RecoveryOS manages state across three distinct layers:
 | `domain/` | Core business logic, pure Python models. Contains the Policy Engine and Taxonomy. |
 | `integrations/` | Adapters for external services (Razorpay, Google GenAI). |
 | `docs/` | Architecture, Methodology, and Compliance documentation. |
+| `tests/` | Comprehensive test suite containing Unit, Integration, Adversarial, and 12 full E2E tests using mocked infrastructure. |
 
 ## Closed Set of Action Verbs
 

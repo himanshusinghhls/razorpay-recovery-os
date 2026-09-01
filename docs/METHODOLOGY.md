@@ -9,7 +9,7 @@ The benchmark exists to scientifically prove the incremental revenue uplift of a
 
 - **Batch Size**: 50,000 synthetic failure events
 - **Execution**: Run entirely in-memory using the `RecoveryPolicyEngine`
-- **AI Probabilities**: We do not call the live Gemini API 50,000 times (to save costs/latency). Instead, we use statistically modeled recovery probabilities derived from our AI's performance on a labeled test set, as defined in `domain/policy/taxonomy.yaml`.
+- **AI Probabilities**: This is a Monte Carlo simulation. We do not call the live Gemini API 50,000 times (to save costs/latency). Instead, we use statistically modeled recovery probabilities derived from our AI's typical performance, as defined in `domain/policy/taxonomy.yaml`.
 
 ## The Failure Mix
 

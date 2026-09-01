@@ -10,25 +10,39 @@ RecoveryOS detects revenue at risk, uses an AI analyst (Gemini 2.5 Flash + Struc
 
 ```mermaid
 flowchart TB
-    A["⚡ Payment Failure Detected"] --> B["🧠 AI Analyst Agent<br/><i>Gemini 2.5 Flash</i>"]
-    B -- "Circuit Breaker (Tenacity) + Fallback" --> C{"🛡️ Policy Engine<br/><i>Deterministic Safety Boundary</i>"}
-    C -->|"✅ Allowed"| D["▶️ Recovery Executor<br/><i>ARQ Redis Background Worker</i>"]
-    C -->|"🔶 Suspicious"| E["👤 Human Review Queue<br/><i>Analyst role required</i>"]
-    C -->|"🛑 Blocked"| F["⏹️ Stopping Rule<br/><i>Retry limit, time window</i>"]
-    D --> G["📋 Audit Trail<br/><i>PostgreSQL (Alembic)</i>"]
-    E --> G
-    F --> G
-    D --> H["🔗 Webhook Reconciliation<br/><i>Idempotency Keys</i>"]
-    H --> G
+    subgraph Trigger
+        A["⚡ Payment Failure Detected"] --> B["Webhook / API Trigger"]
+    end
+
+    subgraph Intelligence
+        B --> C["🧠 AI Analyst Agent<br/><i>Gemini 3.1 Pro (High)</i>"]
+        C -- "Uses 80-line prompt with<br/>Chain-of-Thought & Structural Delimiters" --> D{"🛡️ Policy Engine<br/><i>Deterministic Safety Boundary</i>"}
+        C -- "Fallback on 429/Timeout" --> E["Fallback Taxonomy Config"]
+        E --> D
+    end
+
+    subgraph Execution
+        D -->|"✅ Allowed"| F["▶️ Recovery Executor<br/><i>ARQ Redis Background Worker</i>"]
+        D -->|"🔶 Suspicious"| G["👤 Human Review Queue<br/><i>Analyst role required</i>"]
+        D -->|"🛑 Blocked"| H["⏹️ Stopping Rule<br/><i>Retry limit, time window</i>"]
+    end
+
+    subgraph Post-Execution
+        F --> I["📋 Audit Trail<br/><i>PostgreSQL (Alembic)</i>"]
+        G --> I
+        H --> I
+        F --> J["🔗 Webhook Reconciliation<br/><i>Idempotency Keys</i>"]
+        J --> I
+    end
 
     style A fill:#1e3a5f,stroke:#3b82f6,color:#fff
-    style B fill:#1e3a5f,stroke:#60a5fa,color:#fff
-    style C fill:#312e81,stroke:#818cf8,color:#fff
-    style D fill:#14532d,stroke:#22c55e,color:#fff
-    style E fill:#451a03,stroke:#f59e0b,color:#fff
-    style F fill:#450a0a,stroke:#ef4444,color:#fff
-    style G fill:#1e1b4b,stroke:#a78bfa,color:#fff
-    style H fill:#0c4a6e,stroke:#38bdf8,color:#fff
+    style C fill:#4c1d95,stroke:#8b5cf6,color:#fff
+    style D fill:#831843,stroke:#f43f5e,color:#fff
+    style F fill:#14532d,stroke:#22c55e,color:#fff
+    style G fill:#451a03,stroke:#f59e0b,color:#fff
+    style H fill:#450a0a,stroke:#ef4444,color:#fff
+    style I fill:#1e1b4b,stroke:#a78bfa,color:#fff
+    style J fill:#0c4a6e,stroke:#38bdf8,color:#fff
 ```
 
 ## 50,000-Event Evaluation
@@ -191,9 +205,12 @@ choose your own.
 
 ---
 
-## 95 Passing Tests
+## 107 Passing Tests (Zero Failures)
+
+The project includes a robust, production-grade test suite covering every layer of the architecture, including 12 full end-to-end tests:
 
 ```
+tests/e2e/test_recovery_pipeline.py    — 12 tests (health, RBAC auth flow, idempotency, webhook signature verification, validation)
 tests/unit/test_audit_service.py       — 9 tests (every audit event type)
 tests/unit/test_stopping_rules.py      — 10 tests (time window, daily cap, priorities)
 tests/unit/test_review_models.py       — 3 tests (review lifecycle)

@@ -204,7 +204,7 @@ export function ResultBanner({
     success: {
       tone: "success",
       label: "Recovery authorised",
-      body: "Policy engine cleared the action and it executed against Razorpay.",
+      body: "Policy engine cleared the action and executed securely.",
     },
     escalated: {
       tone: "warning",

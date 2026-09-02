@@ -226,7 +226,7 @@ export function LiveRecoveryTab({
       setStage("execute");
       push(
         "execute",
-        "Executed via Razorpay",
+        "Executed via Payment Gateway",
         data.provider_reference
           ? `Order ${data.provider_reference}`
           : truncateId(data.execution_id, 20),
@@ -257,7 +257,7 @@ export function LiveRecoveryTab({
       push(
         "diagnose",
         "AI analyst engaged",
-        "Gemini 2.5 Flash is diagnosing the failure and estimating recovery probability…",
+        "AI Analysis Core is diagnosing the failure and estimating recovery probability…",
         "violet",
         Cpu,
       );
@@ -311,7 +311,7 @@ export function LiveRecoveryTab({
     push(
       "init",
       "Payment initiated",
-      `${formatINR(amountPaise)} via Razorpay Checkout`,
+      `${formatINR(amountPaise)} via Secure Checkout`,
       "brand",
       CreditCard,
     );
@@ -466,7 +466,7 @@ export function LiveRecoveryTab({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
         <SectionCard
           title="Trigger a recovery"
-          description="Simulate a failure, or run a real Razorpay checkout."
+          description="Simulate a failure, or run a real secure checkout."
           icon={Play}
         >
           {!canRun && (

@@ -6,7 +6,9 @@ import { useState } from "react";
 import clsx from "clsx";
 
 import { useAuth, Role } from "@/lib/auth-context";
-import { Badge, spring } from "@/components/ui";
+import { spring } from "@/components/ui";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Logo } from "@/components/Logo";
 
 export interface TabDef {
   key: string;
@@ -46,34 +48,21 @@ export function DashboardShell({
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[var(--brand-bright)] to-[var(--brand)] shadow-[0_8px_24px_-8px_var(--brand-glow)]">
-            <Zap className="h-5 w-5 text-white" strokeWidth={2.4} />
-            <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-[var(--bg-base)] bg-[var(--success)]" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold leading-tight tracking-tight">
-              RecoveryOS
-            </h1>
-            <p className="text-xs text-[var(--text-muted)]">
-              {user?.merchant_name}
-              <span className="mx-1.5 opacity-40">·</span>
-              <span className="font-mono text-[10px]">{user?.merchant_id}</span>
-            </p>
-          </div>
+          <Logo 
+            subtitle={
+              <>
+                {user?.merchant_name}
+                <span className="mx-1.5 opacity-40">·</span>
+                <span className="font-mono text-[10px]">{user?.merchant_id}</span>
+              </>
+            }
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="success" pulse>
-            Live
-          </Badge>
-          <Badge tone="brand" icon={CreditCard}>
-            Razorpay Test
-          </Badge>
-          <Badge tone="violet" icon={Sparkles}>
-            Gemini 2.5 Flash
-          </Badge>
+        <div className="flex flex-wrap items-center gap-4">
+          <ThemeToggle />
 
-          <div className="ml-1 flex items-center gap-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-1.5 pl-1.5 pr-3">
+          <div className="flex items-center gap-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-1.5 pl-1.5 pr-3 shadow-sm">
             <div className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-[var(--brand)] to-[var(--violet)] text-[11px] font-bold text-white">
               {initials}
             </div>
@@ -157,8 +146,7 @@ export function DashboardShell({
       <main className="mt-5">{children}</main>
 
       <footer className="mt-12 border-t border-[var(--border-subtle)] pt-5 text-center text-[11px] text-[var(--text-muted)]">
-        RecoveryOS · Razorpay AI Buildathon Track 03 · Every action is policy
-        checked and audit logged
+        RecoveryOS Enterprise · Every action is policy checked and audit logged
       </footer>
     </div>
   );

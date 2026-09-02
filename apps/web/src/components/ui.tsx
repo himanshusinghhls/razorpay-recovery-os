@@ -252,7 +252,12 @@ export function MetricTile({
   loading?: boolean;
 }) {
   return (
-    <motion.div variants={fadeUp} className="glass glass-sheen rounded-2xl p-4">
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ scale: 1.02, y: -4, rotateX: 2 }}
+      transition={{ type: "spring", stiffness: 320, damping: 25 }}
+      className="glass glass-sheen rounded-2xl p-4 cursor-default"
+    >
       <div className="flex items-center gap-2.5">
         <div
           className={clsx(

@@ -3,37 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  AlertCircle,
-  ArrowRight,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  ShieldCheck,
-  Zap,
-} from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { Button, Spinner, ease } from "@/components/ui";
-
-const HIGHLIGHTS = [
-  {
-    icon: ShieldCheck,
-    title: "Deterministic safety boundary",
-    body: "The AI proposes. A rules engine disposes. No model output reaches the payment gateway unchecked.",
-  },
-  {
-    icon: Lock,
-    title: "Every action is attributable",
-    body: "Immutable audit trail per payment, stamped with the user or component responsible.",
-  },
-  {
-    icon: Zap,
-    title: "Bounded autonomous recovery",
-    body: "Retry limits, 72-hour windows and per-customer daily caps enforced before execution.",
-  },
-];
+import { Logo } from "@/components/Logo";
+import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
@@ -45,8 +21,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Already signed in (e.g. the refresh cookie was still valid) — don't make
-  // the user look at a login form they don't need.
   useEffect(() => {
     if (!loading && user) router.replace("/dashboard");
   }, [loading, user, router]);
@@ -75,105 +49,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      {/* Narrative panel — hidden on small screens where the form is the job. */}
-      <motion.aside
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6 }}
-        className="relative hidden flex-col justify-between overflow-hidden border-r border-[var(--border-subtle)] p-12 lg:flex"
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center p-6">
+      <header className="absolute inset-x-0 top-0 z-50 flex items-center justify-between p-6 md:px-12">
+        <Link href="/">
+          <Logo />
+        </Link>
+        <ThemeToggle />
+      </header>
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ ...ease, duration: 0.6 }}
+        className="w-full max-w-[400px]"
       >
-        <div className="flex items-center gap-3">
-          <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[var(--brand-bright)] to-[var(--brand)] shadow-[0_8px_24px_-8px_var(--brand-glow)]">
-            <Zap className="h-5 w-5 text-white" strokeWidth={2.4} />
-          </div>
-          <div>
-            <p className="text-base font-bold tracking-tight">RecoveryOS</p>
-            <p className="text-xs text-[var(--text-muted)]">
-              Autonomous Revenue Recovery
+        <div className="glass p-8 sm:p-10 rounded-3xl shadow-xl border border-[var(--border-default)]">
+          <div className="mb-8 text-center flex flex-col items-center">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+              Welcome back
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">
+              Access your merchant recovery console
             </p>
           </div>
-        </div>
 
-        <div className="max-w-lg">
-          <motion.h1
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...ease, delay: 0.1 }}
-            className="text-4xl font-bold leading-[1.15] tracking-tight"
-          >
-            Recover failed payments{" "}
-            <span className="bg-gradient-to-r from-[var(--brand-bright)] via-[#7ba6ff] to-[var(--violet)] bg-clip-text text-transparent">
-              without losing control
-            </span>
-            .
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...ease, delay: 0.18 }}
-            className="mt-4 text-sm leading-relaxed text-[var(--text-secondary)]"
-          >
-            An AI analyst diagnoses every failure. A deterministic policy engine
-            decides what is allowed to happen next. Every step is written to an
-            immutable audit trail.
-          </motion.p>
-
-          <div className="mt-10 space-y-5">
-            {HIGHLIGHTS.map((item, i) => (
-              <motion.div
-                key={item.title}
-                initial={{ opacity: 0, x: -14 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ ...ease, delay: 0.26 + i * 0.08 }}
-                className="flex gap-3.5"
-              >
-                <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[rgba(43,106,255,0.32)] bg-[rgba(43,106,255,0.12)]">
-                  <item.icon
-                    className="h-4 w-4 text-[var(--brand-bright)]"
-                    strokeWidth={2.1}
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">
-                    {item.title}
-                  </p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
-                    {item.body}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-[var(--text-muted)]">
-          Razorpay AI Buildathon · Track 03
-        </p>
-      </motion.aside>
-
-      {/* Form panel */}
-      <div className="flex items-center justify-center px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={ease}
-          className="w-full max-w-sm"
-        >
-          <div className="mb-8 lg:hidden">
-            <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-[var(--brand-bright)] to-[var(--brand)]">
-              <Zap className="h-5 w-5 text-white" strokeWidth={2.4} />
-            </div>
-            <p className="text-lg font-bold tracking-tight">RecoveryOS</p>
-          </div>
-
-          <h2 className="text-2xl font-bold tracking-tight">Sign in</h2>
-          <p className="mt-1.5 text-sm text-[var(--text-muted)]">
-            Access your merchant recovery console.
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <Field
               id="email"
               label="Work email"
@@ -203,7 +103,7 @@ export default function LoginPage() {
                   placeholder="••••••••••"
                   autoComplete="current-password"
                   required
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-2.5 pl-10 pr-10 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--brand)] focus:bg-[var(--surface-2)]"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-2.5 pl-10 pr-10 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--brand)] focus:bg-[var(--surface-2)] shadow-inner"
                 />
                 <button
                   type="button"
@@ -241,18 +141,18 @@ export default function LoginPage() {
               type="submit"
               loading={submitting}
               icon={ArrowRight}
-              className="w-full"
+              className="mt-2 w-full"
             >
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+        </div>
 
-          <p className="mt-8 text-center text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Sessions use short-lived access tokens with a rotating, httpOnly
-            refresh cookie. Repeated failed attempts lock the account.
-          </p>
-        </motion.div>
-      </div>
+        <p className="mt-8 text-center text-[11px] leading-relaxed text-[var(--text-muted)] max-w-xs mx-auto">
+          Sessions use short-lived access tokens with a rotating, httpOnly
+          refresh cookie.
+        </p>
+      </motion.div>
     </div>
   );
 }
@@ -296,7 +196,7 @@ function Field({
           placeholder={placeholder}
           autoComplete={autoComplete}
           required={required}
-          className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-2.5 pl-10 pr-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--brand)] focus:bg-[var(--surface-2)]"
+          className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-1)] py-2.5 pl-10 pr-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--brand)] focus:bg-[var(--surface-2)] shadow-inner"
         />
       </div>
     </div>

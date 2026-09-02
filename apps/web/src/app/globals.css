@@ -45,6 +45,35 @@
   --shadow-lift: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
+.light {
+  --bg-base: #f8fafc;
+  --bg-deep: #ffffff;
+  --bg-raised: #f1f5f9;
+
+  --surface-1: rgba(255, 255, 255, 0.7);
+  --surface-2: rgba(255, 255, 255, 0.85);
+  --surface-3: rgba(255, 255, 255, 0.95);
+
+  --border-subtle: rgba(15, 23, 42, 0.05);
+  --border-default: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.15);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --brand-bright: #2b6aff;
+  --brand-glow: rgba(43, 106, 255, 0.15);
+  
+  --success-dim: rgba(16, 217, 160, 0.2);
+  --warning-dim: rgba(245, 165, 36, 0.2);
+  --danger-dim: rgba(255, 90, 106, 0.2);
+  --violet-dim: rgba(139, 124, 255, 0.15);
+  
+  --shadow-glass: 0 8px 32px rgba(15, 23, 42, 0.06);
+  --shadow-lift: 0 16px 48px rgba(15, 23, 42, 0.12);
+}
+
 @theme inline {
   --color-background: var(--bg-base);
   --color-foreground: var(--text-primary);
@@ -64,6 +93,9 @@
 
 html {
   color-scheme: dark;
+}
+html.light {
+  color-scheme: light;
 }
 
 body {

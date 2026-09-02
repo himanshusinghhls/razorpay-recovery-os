@@ -50,7 +50,6 @@ export function Logo({ className, showText = true, subtitle }: { className?: str
           strokeLinejoin="round"
           className="text-white drop-shadow-sm"
         >
-          {/* A bespoke secure data/vault icon */}
           <motion.path
             d="m12 3-8 4.5 8 4.5 8-4.5Z"
             initial={{ pathLength: 0 }}

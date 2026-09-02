@@ -49,10 +49,6 @@ RECOVERY_PAYLOAD = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Unauthenticated access
-# ---------------------------------------------------------------------------
-
 def test_missing_auth_header_blocks_write(client):
     response = client.post("/api/v1/recoveries/execute", json=RECOVERY_PAYLOAD)
     assert response.status_code == 401
@@ -81,10 +77,6 @@ def test_create_order_requires_authentication(client):
     response = client.post("/api/v1/recoveries/create-order?amount=100000")
     assert response.status_code == 401
 
-
-# ---------------------------------------------------------------------------
-# Token validation
-# ---------------------------------------------------------------------------
 
 def test_garbage_token_rejected(client):
     response = client.get(
@@ -177,10 +169,6 @@ def test_alg_none_token_rejected(client):
     assert response.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# Login
-# ---------------------------------------------------------------------------
-
 def test_login_rejects_bad_credentials(client):
     response = client.post(
         "/api/v1/auth/login",
@@ -203,10 +191,6 @@ def test_refresh_without_cookie_rejected(client):
     assert client.post("/api/v1/auth/refresh").status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# Response hardening
-# ---------------------------------------------------------------------------
-
 def test_security_headers_present(client):
     headers = client.get("/health").headers
     assert headers["X-Content-Type-Options"] == "nosniff"
@@ -228,6 +212,4 @@ def test_webhook_rejects_bad_signature(client):
             "Content-Type": "application/json",
         },
     )
-    # 401 when a secret is configured, 503 when the deployment has none —
-    # either way the event is never processed.
     assert response.status_code in (401, 503)

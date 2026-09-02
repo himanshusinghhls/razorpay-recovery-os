@@ -18,16 +18,12 @@ help:
 	@echo "First run:  make setup && make infra && make db-init && make seed"
 	@echo "Then, in three terminals: make dev / make worker / make web"
 
-# ---- Setup ----
-
 setup:
 	python3 -m venv apps/api/.venv
 	$(PIP) install --upgrade pip
 	$(PIP) install -r apps/api/requirements.txt
 	cd apps/web && npm install
 	@echo "Now copy .env.example to .env and apps/web/.env.example to apps/web/.env.local"
-
-# ---- Infrastructure ----
 
 infra:
 	docker compose up -d
@@ -54,8 +50,6 @@ seed:
 seed-db:
 	PYTHONPATH=. $(PY) scripts/seed_db.py
 
-# ---- Development ----
-
 dev:
 	PYTHONPATH=. ./apps/api/.venv/bin/uvicorn apps.api.app.main:app --reload --port 8000
 
@@ -64,8 +58,6 @@ worker:
 
 web:
 	cd apps/web && npm run dev
-
-# ---- Testing ----
 
 test:
 	PYTHONPATH=. ./apps/api/.venv/bin/pytest tests/ -v
@@ -76,12 +68,8 @@ test-unit:
 test-integration:
 	PYTHONPATH=. ./apps/api/.venv/bin/pytest tests/integration/ -v
 
-# ---- Evaluation ----
-
 benchmark:
 	PYTHONPATH=. $(PY) simulator/run_evaluation.py
-
-# ---- Linting ----
 
 lint:
 	ruff check .
@@ -89,8 +77,6 @@ lint:
 
 format:
 	ruff format .
-
-# ---- Cleanup ----
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

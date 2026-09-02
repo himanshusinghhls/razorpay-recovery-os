@@ -23,8 +23,6 @@ router = APIRouter(
     tags=["Webhooks"],
 )
 
-# Razorpay caps webhook bodies well below this; the limit exists so an
-# unauthenticated caller cannot stream an arbitrarily large body at us.
 MAX_WEBHOOK_BYTES = 1_048_576
 
 
@@ -41,8 +39,6 @@ async def razorpay_webhook(
     verified before the payload is parsed or touched.
     """
     if not settings.razorpay_webhook_secret:
-        # Without a secret every signature check would trivially pass, so
-        # refuse to accept webhooks at all rather than accept forged ones.
         logger.error("webhook received but RAZORPAY_WEBHOOK_SECRET is not configured")
         raise HTTPException(status_code=503, detail="Webhook processing not configured")
 
@@ -68,7 +64,6 @@ async def razorpay_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    # Resolve which tenant this event belongs to before doing any scoped work.
     order_id = (
         payload.get("payload", {})
         .get("payment", {})
@@ -80,8 +75,6 @@ async def razorpay_webhook(
     )
 
     webhook_repo = PostgresWebhookEventRepository(session)
-    # An event we cannot attribute is still recorded for idempotency and
-    # forensics; reconciliation simply finds nothing to update.
     execution_repo = PostgresExecutionRepository(session, merchant_id or "")
     reconciler = RecoveryReconciliationService(execution_repo)
     processor = WebhookProcessor(repository=webhook_repo, reconciler=reconciler)

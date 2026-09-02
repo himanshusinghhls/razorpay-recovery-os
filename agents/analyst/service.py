@@ -28,8 +28,6 @@ def _build_ssl_context() -> ssl.SSLContext:
 
         return httpx.create_ssl_context()
 
-# Anchored to the project root, not the process CWD, so the fallback keeps
-# working regardless of where the worker or API was launched from.
 TAXONOMY_PATH = PROJECT_ROOT / "domain" / "policy" / "taxonomy.yaml"
 
 
@@ -102,10 +100,6 @@ class RecoveryAnalystAgent:
 
         self.client = genai.Client(
             api_key=api_key,
-            # google-genai builds its own httpx client, so it does not inherit
-            # the trust store configured for the Razorpay client. On networks
-            # with a TLS-intercepting proxy every call would otherwise fail
-            # verification and silently drop us to the taxonomy fallback.
             http_options=types.HttpOptions(
                 async_client_args={"verify": _build_ssl_context()},
                 client_args={"verify": _build_ssl_context()},

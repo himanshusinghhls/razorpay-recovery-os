@@ -26,10 +26,6 @@ from apps.api.app.db.models import UserRole
 from apps.api.app.db.session import get_db_session
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 DEMO_MERCHANT = "mrch_demo_recoveryos"
 DEMO_USER = "user_e2e_test_admin"
 DEMO_EMAIL = "admin@acmecommerce.in"
@@ -56,7 +52,6 @@ def mock_db_session():
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     session.close = AsyncMock()
-    # Default scalar returns for analytics queries
     mock_result = MagicMock()
     mock_result.scalar.return_value = 0
     mock_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[]))
@@ -77,7 +72,6 @@ def _make_client(mock_db_session, principal_override=None):
     if principal_override is not None:
         app.dependency_overrides[get_current_principal] = lambda: principal_override
 
-    # Mock infrastructure that the lifespan normally creates.
     app.state.redis = AsyncMock()
     app.state.redis.ping = AsyncMock(return_value=True)
     app.state.redis.set = AsyncMock(return_value=True)
@@ -124,11 +118,6 @@ def viewer_client(mock_db_session):
     app.dependency_overrides.clear()
 
 
-# ---------------------------------------------------------------------------
-# System Health
-# ---------------------------------------------------------------------------
-
-
 class TestSystemEndpoints:
     """Verify health, readiness, and root endpoints return expected shapes."""
 
@@ -144,11 +133,6 @@ class TestSystemEndpoints:
         body = resp.json()
         assert "RecoveryOS" in body["name"]
         assert "version" in body
-
-
-# ---------------------------------------------------------------------------
-# Authentication Flow
-# ---------------------------------------------------------------------------
 
 
 class TestAuthFlow:
@@ -170,13 +154,7 @@ class TestAuthFlow:
     def test_authenticated_request_reaches_route(self, admin_client):
         """A properly authenticated request passes auth and reaches the route."""
         resp = admin_client.get("/api/v1/analytics/summary")
-        # If auth failed we'd get 401; anything else proves the guard passed.
         assert resp.status_code != 401
-
-
-# ---------------------------------------------------------------------------
-# Recovery Execution Flow
-# ---------------------------------------------------------------------------
 
 
 class TestRecoveryExecution:
@@ -229,11 +207,6 @@ class TestRecoveryExecution:
         assert resp.status_code == 403
 
 
-# ---------------------------------------------------------------------------
-# Webhook Ingress
-# ---------------------------------------------------------------------------
-
-
 class TestWebhookIngress:
     """Webhook processing — verifies signature checking and payload handling."""
 
@@ -255,13 +228,7 @@ class TestWebhookIngress:
                 "X-Razorpay-Event-Id": "evt_test_001",
             },
         )
-        # 401 (bad sig) or 503 (webhook secret not configured) are both correct
         assert resp.status_code in (401, 503)
-
-
-# ---------------------------------------------------------------------------
-# Input Validation
-# ---------------------------------------------------------------------------
 
 
 class TestInputValidation:

@@ -24,8 +24,6 @@ from ..core.auth import Principal, get_current_principal
 from ..db.models import AuditRecord, ExecutionRecord, ReviewRecord
 from ..db.session import get_db_session
 
-# Anchored to the project root rather than the process CWD, which previously
-# made this endpoint depend on where uvicorn happened to be launched from.
 TAXONOMY_PATH = PROJECT_ROOT / "domain" / "policy" / "taxonomy.yaml"
 
 
@@ -66,8 +64,6 @@ async def get_analytics_summary(
     """
     mid = principal.merchant_id
 
-    # One round trip for the execution-status breakdown instead of three
-    # separate COUNT queries against the same table.
     status_rows = await session.execute(
         select(ExecutionRecord.status, func.count())
         .where(ExecutionRecord.merchant_id == mid)
@@ -135,7 +131,6 @@ async def get_analytics_summary(
         round(policy_blocks / total_executions * 100, 2) if total_executions > 0 else 0.0
     )
 
-    # Amount actually put back in play, from the reviews the tenant escalated.
     recovered_paise = (
         await session.execute(
             select(func.coalesce(func.sum(ReviewRecord.amount), 0)).where(
@@ -159,10 +154,6 @@ async def get_analytics_summary(
     }
 
 
-# Fixed so the published figures are reproducible. The benchmark is a
-# measurement, not a lottery: with the module-level `random` it drew a fresh
-# batch every call, so the headline numbers moved on every run and could never
-# be checked against the ones in the README.
 DEFAULT_BENCHMARK_SEED = 20260824
 
 

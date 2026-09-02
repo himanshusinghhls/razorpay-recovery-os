@@ -26,7 +26,6 @@ DEMO_MERCHANT = {
     "slug": "acme-commerce",
 }
 
-# (env var, email, full name, role)
 DEMO_USERS = [
     ("SEED_ADMIN_PASSWORD", "admin@acmecommerce.in", "Himanshu", UserRole.ADMIN),
     ("SEED_ANALYST_PASSWORD", "analyst@acmecommerce.in", "Anjali", UserRole.ANALYST),

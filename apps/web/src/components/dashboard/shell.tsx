@@ -48,7 +48,7 @@ export function DashboardShell({
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <Logo 
+          <Logo
             subtitle={
               <>
                 {user?.merchant_name}
@@ -113,8 +113,6 @@ export function DashboardShell({
                   : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]",
               )}
             >
-              {/* One shared element slides between tabs instead of each tab
-                  fading its own background in and out. */}
               {isActive && (
                 <motion.span
                   layoutId="tab-pill"

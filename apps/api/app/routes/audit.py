@@ -41,8 +41,6 @@ async def get_audit_trail(
     entries = await repo.get_by_payment_id(payment_id)
 
     if not entries:
-        # Same 404 whether the payment belongs to another tenant or does not
-        # exist, so this cannot be used to probe for other merchants' payments.
         raise HTTPException(
             status_code=404,
             detail=f"No audit trail found for payment {payment_id}",

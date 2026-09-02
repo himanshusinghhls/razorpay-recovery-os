@@ -37,11 +37,9 @@ interface SessionResponse {
 
 interface AuthState {
   user: UserProfile | null;
-  /** True until the initial silent-refresh attempt settles. */
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** Role rank check, mirroring the backend's require_role. */
   can: (minimum: Role) => boolean;
 }
 
@@ -62,13 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  /**
-   * Renew shortly before the access token expires.
-   *
-   * Without this the dashboard would simply start 401-ing mid-session once the
-   * short-lived token aged out, and the user would be bounced to login while
-   * actively working.
-   */
   const scheduleRefresh = useCallback(
     (expiresIn: number) => {
       clearTimer();
@@ -97,8 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [scheduleRefresh],
   );
 
-  // On mount, try to resume an existing session from the refresh cookie. A
-  // 401 here just means "not signed in" and is not an error worth surfacing.
   useEffect(() => {
     let cancelled = false;
 
@@ -118,7 +107,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [applySession]);
 
-  // The axios interceptor calls this when a refresh finally fails.
   useEffect(() => {
     setSessionLostHandler(() => {
       clearTimer();
@@ -150,8 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.post("/auth/logout");
     } catch {
-      // Even if the server call fails, drop local state so the browser is
-      // never left believing it is still signed in.
+      // 
     }
     setAccessToken(null);
     setUser(null);

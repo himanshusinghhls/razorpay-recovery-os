@@ -38,6 +38,4 @@ class AuditEntry:
     data: dict[str, Any] = field(default_factory=dict)
     created_at: datetime | None = None
 
-    # Who caused this entry: a user id for human actions, or a component name
-    # ("system", "worker", "webhook") for automated ones.
     actor: str = "system"

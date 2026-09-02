@@ -1,18 +1,10 @@
 @import "tailwindcss";
 
-/*
-  RecoveryOS design system — dark, glass, Razorpay navy/blue.
-
-  Every colour is a token so surfaces stay consistent across the app and a
-  future light theme only has to redefine this block.
-*/
 :root {
-  /* Ground: deep navy-black, warmed slightly so it never reads pure grey. */
   --bg-base: #05080f;
   --bg-deep: #070b16;
   --bg-raised: #0b1120;
 
-  /* Glass surfaces, layered by elevation. */
   --surface-1: rgba(19, 28, 51, 0.55);
   --surface-2: rgba(24, 35, 63, 0.68);
   --surface-3: rgba(30, 43, 76, 0.78);
@@ -25,7 +17,6 @@
   --text-secondary: #9db0d4;
   --text-muted: #64789e;
 
-  /* Razorpay palette, brightened for legibility on dark. */
   --navy: #0c244c;
   --brand: #2b6aff;
   --brand-bright: #4f8cff;
@@ -64,12 +55,12 @@
 
   --brand-bright: #2b6aff;
   --brand-glow: rgba(43, 106, 255, 0.15);
-  
+
   --success-dim: rgba(16, 217, 160, 0.2);
   --warning-dim: rgba(245, 165, 36, 0.2);
   --danger-dim: rgba(255, 90, 106, 0.2);
   --violet-dim: rgba(139, 124, 255, 0.15);
-  
+
   --shadow-glass: 0 8px 32px rgba(15, 23, 42, 0.06);
   --shadow-lift: 0 16px 48px rgba(15, 23, 42, 0.12);
 }
@@ -94,6 +85,7 @@
 html {
   color-scheme: dark;
 }
+
 html.light {
   color-scheme: light;
 }
@@ -106,12 +98,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
-
-/* ---------------------------------------------------------------------------
-   Ambient background
-   Two slow-drifting radial fields plus a fine grid. Fixed and non-interactive
-   so it never affects layout or capture pointer events.
---------------------------------------------------------------------------- */
 
 .aurora-field {
   position: fixed;
@@ -165,29 +151,45 @@ body {
     linear-gradient(rgba(140, 175, 255, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(140, 175, 255, 0.045) 1px, transparent 1px);
   background-size: 56px 56px;
-  /* Fade the grid out toward the edges so it reads as texture, not a table. */
   mask-image: radial-gradient(ellipse 90% 65% at 50% 32%, #000 40%, transparent 100%);
   -webkit-mask-image: radial-gradient(ellipse 90% 65% at 50% 32%, #000 40%, transparent 100%);
 }
 
 @keyframes drift-a {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(7rem, 5rem) scale(1.12); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(7rem, 5rem) scale(1.12);
+  }
 }
 
 @keyframes drift-b {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(-6rem, 7rem) scale(1.08); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(-6rem, 7rem) scale(1.08);
+  }
 }
 
 @keyframes drift-c {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(5rem, -4rem) scale(1.15); }
-}
 
-/* ---------------------------------------------------------------------------
-   Glass surfaces
---------------------------------------------------------------------------- */
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(5rem, -4rem) scale(1.15);
+  }
+}
 
 .glass {
   background: var(--surface-1);
@@ -207,7 +209,6 @@ body {
   box-shadow: var(--shadow-lift);
 }
 
-/* Hairline highlight along the top edge — reads as light catching glass. */
 .glass-sheen {
   position: relative;
   overflow: hidden;
@@ -218,45 +219,62 @@ body {
   position: absolute;
   inset: 0 0 auto 0;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(160, 195, 255, 0.5),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(160, 195, 255, 0.5),
+      transparent);
 }
 
-.glow-brand  { box-shadow: 0 0 0 1px var(--border-strong), 0 0 28px -6px var(--brand-glow); }
-.glow-success{ box-shadow: 0 0 0 1px rgba(16, 217, 160, 0.3),  0 0 24px -8px rgba(16, 217, 160, 0.5); }
-.glow-danger { box-shadow: 0 0 0 1px rgba(255, 90, 106, 0.3),  0 0 24px -8px rgba(255, 90, 106, 0.5); }
-.glow-warning{ box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.3),  0 0 24px -8px rgba(245, 165, 36, 0.5); }
+.glow-brand {
+  box-shadow: 0 0 0 1px var(--border-strong), 0 0 28px -6px var(--brand-glow);
+}
 
-/* ---------------------------------------------------------------------------
-   Motion primitives
---------------------------------------------------------------------------- */
+.glow-success {
+  box-shadow: 0 0 0 1px rgba(16, 217, 160, 0.3), 0 0 24px -8px rgba(16, 217, 160, 0.5);
+}
 
-/* Sweeping highlight used on the primary CTA. */
+.glow-danger {
+  box-shadow: 0 0 0 1px rgba(255, 90, 106, 0.3), 0 0 24px -8px rgba(255, 90, 106, 0.5);
+}
+
+.glow-warning {
+  box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.3), 0 0 24px -8px rgba(245, 165, 36, 0.5);
+}
+
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .shimmer {
-  background: linear-gradient(
-    100deg,
-    transparent 20%,
-    rgba(255, 255, 255, 0.16) 40%,
-    transparent 60%
-  );
+  background: linear-gradient(100deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.16) 40%,
+      transparent 60%);
   background-size: 200% 100%;
   animation: shimmer 2.6s linear infinite;
 }
 
-/* Expanding ring behind a live status dot. */
 @keyframes pulse-ring {
-  0%   { transform: scale(0.75); opacity: 0.9; }
-  70%  { transform: scale(2.4);  opacity: 0; }
-  100% { transform: scale(2.4);  opacity: 0; }
+  0% {
+    transform: scale(0.75);
+    opacity: 0.9;
+  }
+
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
 }
 
 .pulse-ring::after {
@@ -268,11 +286,20 @@ body {
   animation: pulse-ring 2s cubic-bezier(0.24, 0.6, 0.35, 1) infinite;
 }
 
-/* Vertical travel of the light along the pipeline spine. */
 @keyframes flow-down {
-  0%   { transform: translateY(-100%); opacity: 0; }
-  40%  { opacity: 1; }
-  100% { transform: translateY(320%);  opacity: 0; }
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(320%);
+    opacity: 0;
+  }
 }
 
 .flow-line {
@@ -280,37 +307,55 @@ body {
 }
 
 @keyframes count-glow {
-  0%, 100% { text-shadow: 0 0 18px rgba(79, 140, 255, 0.0); }
-  50%      { text-shadow: 0 0 18px rgba(79, 140, 255, 0.55); }
+
+  0%,
+  100% {
+    text-shadow: 0 0 18px rgba(79, 140, 255, 0.0);
+  }
+
+  50% {
+    text-shadow: 0 0 18px rgba(79, 140, 255, 0.55);
+  }
 }
 
 .metric-live {
   animation: count-glow 2.4s ease-in-out infinite;
 }
 
-/* Indeterminate progress sweep for in-flight pipeline stages. */
 @keyframes scan {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(400%);
+  }
 }
 
 .scan-bar {
   animation: scan 1.4s ease-in-out infinite;
 }
 
-/* ---------------------------------------------------------------------------
-   Chrome
---------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 
-::-webkit-scrollbar        { width: 8px; height: 8px; }
-::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  {
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
   background: rgba(126, 160, 235, 0.22);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(126, 160, 235, 0.4); background-clip: padding-box; }
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 160, 235, 0.4);
+  background-clip: padding-box;
+}
 
 ::selection {
   background: rgba(43, 106, 255, 0.35);
@@ -323,9 +368,8 @@ body {
   border-radius: 6px;
 }
 
-/* Respect users who have asked the OS to reduce motion: kill the ambient
-   loops and long transitions, keep the interface fully functional. */
 @media (prefers-reduced-motion: reduce) {
+
   .aurora-blob,
   .shimmer,
   .pulse-ring::after,

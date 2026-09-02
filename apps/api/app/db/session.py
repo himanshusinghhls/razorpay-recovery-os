@@ -9,15 +9,10 @@ db_url = settings.database_url.replace("postgresql://", "postgresql+psycopg://")
 engine = create_async_engine(
     db_url,
     echo=False,
-    # Sized for a single process; total DB connections is this x worker count,
-    # which has to stay under Postgres max_connections.
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
     pool_timeout=settings.db_pool_timeout,
-    # Recycle before common proxy/Postgres idle timeouts drop the socket.
     pool_recycle=settings.db_pool_recycle,
-    # Cheap liveness check on checkout; without it, every connection in the
-    # pool raises once after a database restart or failover.
     pool_pre_ping=True,
 )
 

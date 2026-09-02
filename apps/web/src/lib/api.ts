@@ -4,19 +4,9 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-export const API_BASE = `${
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
-}/api/v1`;
+export const API_BASE = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+  }/api/v1`;
 
-/**
- * The access token lives in a module variable, never in localStorage or a
- * readable cookie.
- *
- * An XSS payload can read anything in web storage, and a token parked there
- * outlives the page. Holding it in memory means it dies with the tab, and the
- * only durable credential is the httpOnly refresh cookie that script cannot
- * touch.
- */
 let accessToken: string | null = null;
 let onSessionLost: (() => void) | null = null;
 
@@ -34,15 +24,10 @@ export function setSessionLostHandler(handler: (() => void) | null) {
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE,
-  // Required so the browser sends the httpOnly refresh cookie.
   withCredentials: true,
   timeout: 30_000,
 });
 
-/**
- * Endpoints that fan out to the model or grind through a large batch, and so
- * legitimately outrun the default timeout.
- */
 export const SLOW_REQUEST = { timeout: 120_000 } as const;
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -52,14 +37,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-/**
- * Single-flight refresh.
- *
- * When a burst of parallel requests all 401 at once, every one of them would
- * otherwise fire its own /auth/refresh. Because refresh tokens rotate and
- * re-use is treated as theft, that would revoke the family and log the user
- * out. Instead the first failure starts one refresh and the rest await it.
- */
 let refreshInFlight: Promise<string> | null = null;
 
 async function refreshAccessToken(): Promise<string> {
@@ -107,8 +84,6 @@ api.interceptors.response.use(
         original.headers.set("Authorization", `Bearer ${token}`);
         return api(original);
       } catch {
-        // The refresh cookie is gone, expired, or was revoked — the session is
-        // genuinely over, so hand control back to the auth provider.
         setAccessToken(null);
         onSessionLost?.();
       }
@@ -118,7 +93,6 @@ api.interceptors.response.use(
   },
 );
 
-/** Pull a human-readable message out of a FastAPI error response. */
 export function errorMessage(err: unknown, fallback = "Something went wrong") {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail;

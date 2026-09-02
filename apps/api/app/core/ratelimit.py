@@ -50,8 +50,6 @@ async def check_rate_limit(
     try:
         pipe = redis.pipeline()
         pipe.incr(key)
-        # TTL slightly exceeds the window so the final requests in it still
-        # see the counter; the key then expires on its own.
         pipe.expire(key, window_seconds + 5)
         used, _ = await pipe.execute()
     except Exception as exc:  # noqa: BLE001 - availability beats strictness here

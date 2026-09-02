@@ -100,8 +100,6 @@ async def execute_recovery(
 
     redis = getattr(request.app.state, "redis", None)
 
-    # Writes that can move real money get a tighter, per-user budget than the
-    # coarse per-IP ceiling in middleware.
     verdict = await check_rate_limit(
         redis,
         identity=principal.user_id,
@@ -117,16 +115,11 @@ async def execute_recovery(
 
     execution_id = f"exec_{uuid.uuid4().hex[:16]}"
 
-    # Namespaced by merchant so one tenant's idempotency key can never collide
-    # with — or read back — another's.
     cache_key = (
         f"idem:{principal.merchant_id}:{payload.payment_id}:{idempotency_key}"
     )
 
     if redis is not None:
-        # SET NX is atomic: exactly one concurrent caller wins the key. The
-        # previous GET-then-SET let two simultaneous retries both see an empty
-        # cache and both enqueue a job against the same payment.
         won = await redis.set(
             cache_key, execution_id, ex=IDEMPOTENCY_TTL_SECONDS, nx=True
         )
@@ -175,8 +168,6 @@ async def get_job_status(
 
     if job_status.value == "complete":
         result = await job.result()
-        # The queue itself is not tenant-aware, so confirm the finished job's
-        # own merchant before handing its result back.
         if isinstance(result, dict) and result.get("merchant_id") not in (
             None,
             principal.merchant_id,

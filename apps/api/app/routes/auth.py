@@ -49,10 +49,6 @@ MAX_FAILED_LOGINS = 5
 LOCKOUT_MINUTES = 15
 
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=256)
@@ -73,10 +69,6 @@ class SessionResponse(BaseModel):
     expires_in: int
     user: UserProfile
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _set_refresh_cookie(response: Response, raw_token: str) -> None:
     response.set_cookie(
@@ -145,10 +137,6 @@ async def _issue_session(
     )
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
 @router.post("/login", response_model=SessionResponse)
 async def login(
     payload: LoginRequest,
@@ -156,8 +144,6 @@ async def login(
     response: Response,
     session: AsyncSession = Depends(get_db_session),
 ) -> SessionResponse:
-    # Login is the one endpoint worth guessing against, so it gets its own
-    # tighter per-IP budget on top of the global middleware limit.
     verdict = await check_rate_limit(
         getattr(request.app.state, "redis", None),
         identity=client_ip(request),
@@ -176,8 +162,6 @@ async def login(
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    # Identical response and comparable timing whether or not the account
-    # exists, so this cannot be used to enumerate users.
     invalid = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password"
     )
@@ -262,8 +246,6 @@ async def refresh(
 
     now = datetime.now(timezone.utc)
 
-    # A token that was already redeemed is in circulation somewhere it should
-    # not be. Assume compromise and kill every token in the family.
     if record.used_at is not None or record.revoked_at is not None:
         await session.execute(
             update(RefreshTokenRecord)
@@ -320,8 +302,6 @@ async def logout(
         )
         record = result.scalar_one_or_none()
         if record is not None:
-            # Revoke the family, not just this token, so every device session
-            # started from this login chain ends here.
             await session.execute(
                 update(RefreshTokenRecord)
                 .where(

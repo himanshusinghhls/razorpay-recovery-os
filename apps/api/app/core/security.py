@@ -23,15 +23,9 @@ from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 from apps.api.app.config import settings
 
-# OWASP-recommended baseline; ~50ms/hash on commodity hardware.
 _hasher = PasswordHasher(time_cost=2, memory_cost=64 * 1024, parallelism=1)
 
 TokenType = Literal["access", "refresh"]
-
-
-# --------------------------------------------------------------------------
-# Passwords
-# --------------------------------------------------------------------------
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
@@ -63,10 +57,6 @@ def dummy_verify() -> None:
     """
     _hasher.hash("timing-equalizer")
 
-
-# --------------------------------------------------------------------------
-# Tokens
-# --------------------------------------------------------------------------
 
 def _encode(payload: dict[str, Any]) -> str:
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)

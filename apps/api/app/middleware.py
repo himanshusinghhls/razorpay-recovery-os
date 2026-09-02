@@ -12,7 +12,6 @@ from .core.ratelimit import check_rate_limit
 
 logger = logging.getLogger("recoveryos.request")
 
-# Paths that must stay reachable without credentials.
 _UNMETERED_PATHS = {"/health", "/ready", "/metrics"}
 
 
@@ -93,7 +92,6 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
                 elapsed_ms,
                 request_id,
             )
-            # Never leak a stack trace or internal message to the caller.
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Internal server error", "request_id": request_id},

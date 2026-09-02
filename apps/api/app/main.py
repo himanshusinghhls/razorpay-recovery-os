@@ -31,15 +31,11 @@ app = FastAPI(
     version="2.0.0",
     description="AI-powered revenue recovery infrastructure",
     lifespan=lifespan,
-    # The interactive docs expose every schema; keep them off in production.
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None if settings.is_production else "/redoc",
     openapi_url=None if settings.is_production else "/openapi.json",
 )
 
-# Starlette runs middleware in reverse registration order, so the last one
-# added is outermost. Logging wraps everything (it must see every response,
-# including 429s), then security headers, then the rate limiter.
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(StructuredLoggingMiddleware)
@@ -47,7 +43,6 @@ app.add_middleware(StructuredLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    # Required for the httpOnly refresh cookie to be sent cross-origin.
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=[

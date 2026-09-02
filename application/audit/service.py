@@ -14,8 +14,6 @@ class AuditService:
 
     def __init__(self, repository: AuditRepository, actor: str = "system") -> None:
         self.repository = repository
-        # Stamped onto every entry this service writes, so the trail records
-        # which user or component was responsible rather than just "merchant".
         self.actor = actor
 
     async def log_failure_detected(

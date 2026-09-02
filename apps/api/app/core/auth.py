@@ -66,9 +66,6 @@ async def get_current_principal(
     if not user_id or not merchant_id:
         raise _UNAUTHENTICATED
 
-    # The token is signed, but the account may have been disabled or its role
-    # downgraded since issue. Access tokens are short-lived precisely so this
-    # lookup stays cheap and staleness stays bounded.
     user = await session.get(User, user_id)
     if user is None or not user.is_active or user.merchant_id != merchant_id:
         raise _UNAUTHENTICATED
@@ -103,8 +100,6 @@ def require_role(minimum: UserRole):
 
     return _guard
 
-
-# Convenience aliases used across the routers.
 CurrentUser = Depends(get_current_principal)
 RequireViewer = Depends(require_role(UserRole.VIEWER))
 RequireAnalyst = Depends(require_role(UserRole.ANALYST))
@@ -127,8 +122,6 @@ def client_ip(request: Request) -> str:
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
             parts = [p.strip() for p in forwarded.split(",") if p.strip()]
-            # The right-most entries are appended by our own proxies; step back
-            # past them to reach the address the edge actually observed.
             if len(parts) >= hops:
                 return parts[-hops]
             return parts[0]

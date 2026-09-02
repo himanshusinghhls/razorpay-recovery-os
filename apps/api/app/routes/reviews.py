@@ -81,7 +81,6 @@ async def approve_review(
     audit_repo = PostgresAuditRepository(session, principal.merchant_id)
     audit_service = AuditService(audit_repo, actor=principal.user_id)
 
-    # Atomically claims the review; a second concurrent approval gets None.
     review = await review_service.approve(review_id, resolved_by=principal.user_id)
 
     if not review:
@@ -157,8 +156,6 @@ async def approve_review(
         }
 
     except Exception as exc:  # noqa: BLE001
-        # The approval itself already committed; surface that the downstream
-        # execution failed without leaking the provider's error text.
         logger.exception("execution after approval failed review=%s", review_id)
         return {
             "review_id": review_id,

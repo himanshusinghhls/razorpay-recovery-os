@@ -6,12 +6,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Spinner } from "@/components/ui";
 
-/**
- * Client-side gate for authenticated pages.
- *
- * This is a UX guard, not a security boundary — the API authenticates every
- * request independently, so a user who bypasses this still gets 401s.
- */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();

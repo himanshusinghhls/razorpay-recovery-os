@@ -32,9 +32,6 @@ class PostgresExecutionRepository(ExecutionRepository):
         try:
             await self.session.commit()
         except IntegrityError:
-            # The primary key already exists. Relying on the constraint rather
-            # than a preceding SELECT closes the window where two workers both
-            # read "not found" and both insert.
             await self.session.rollback()
             raise ValueError("Execution already exists")
 

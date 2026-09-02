@@ -39,7 +39,6 @@ const ORDER: PipelineStage[] = [
   "result",
 ];
 
-/** Horizontal stage rail showing where the current run has reached. */
 export function StageRail({ stage }: { stage: PipelineStage }) {
   const currentIndex = ORDER.indexOf(stage);
 
@@ -65,7 +64,6 @@ export function StageRail({ stage }: { stage: PipelineStage }) {
                       : "bg-gradient-to-r from-[var(--brand)] to-[var(--brand-bright)]",
                   )}
                 />
-                {/* Indeterminate sweep while this stage is still working. */}
                 {isCurrent && (
                   <span className="scan-bar absolute inset-y-0 left-0 w-1/4 bg-white/40 blur-[2px]" />
                 )}
@@ -91,7 +89,6 @@ export function StageRail({ stage }: { stage: PipelineStage }) {
   );
 }
 
-/** Vertical event feed for the active run. */
 export function PipelineFeed({
   cards,
   running,
@@ -111,8 +108,6 @@ export function PipelineFeed({
 
   return (
     <div className="relative">
-      {/* Spine connecting the events, with a light travelling down it while a
-          run is still in flight. */}
       <div className="absolute bottom-4 left-[19px] top-4 w-px overflow-hidden bg-[var(--border-default)]">
         {running && (
           <span className="flow-line absolute inset-x-0 h-12 bg-gradient-to-b from-transparent via-[var(--brand-bright)] to-transparent" />

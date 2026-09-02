@@ -30,19 +30,15 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ---------------------------------------------------------------------------
-# Tenancy & identity
-# ---------------------------------------------------------------------------
-
 class UserRole(str, enum.Enum):
     """
     Ordered least- to most-privileged. `require_role` compares by rank, so a
     higher role always satisfies a lower requirement.
     """
 
-    VIEWER = "viewer"    # read dashboards and audit trails
-    ANALYST = "analyst"  # + trigger recoveries, approve/reject reviews
-    ADMIN = "admin"      # + manage users and merchant settings
+    VIEWER = "viewer"
+    ANALYST = "analyst"
+    ADMIN = "admin"
 
 
 ROLE_RANK: dict[UserRole, int] = {
@@ -66,12 +62,10 @@ class Merchant(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
 
-    # Per-tenant Razorpay credentials. Null falls back to the platform-level keys.
     razorpay_key_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # Tenant-level recovery guardrails, overriding the platform defaults.
     daily_recovery_cap: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
     max_auto_recovery_amount: Mapped[int] = mapped_column(
         Integer, default=50_000_00, nullable=False
@@ -90,9 +84,6 @@ class User(Base):
         ForeignKey("merchants.merchant_id", ondelete="CASCADE"), index=True, nullable=False
     )
 
-    # Globally unique so that login can resolve an account from the email
-    # alone, with no merchant picker step. A person needing access to two
-    # merchants gets two accounts.
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String, default="", nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
@@ -102,7 +93,6 @@ class User(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # Online brute-force protection: cleared on every successful login.
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -147,10 +137,6 @@ class RefreshTokenRecord(Base):
     ip_address: Mapped[str] = mapped_column(String, default="", nullable=False)
 
 
-# ---------------------------------------------------------------------------
-# Recovery pipeline
-# ---------------------------------------------------------------------------
-
 class ExecutionRecord(Base):
     __tablename__ = "executions"
     __table_args__ = (
@@ -172,7 +158,6 @@ class ExecutionRecord(Base):
     external_reference: Mapped[str | None] = mapped_column(String, nullable=True)
     message: Mapped[str] = mapped_column(String)
 
-    # Who/what initiated this recovery — null for system-driven runs.
     initiated_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -230,7 +215,6 @@ class AuditRecord(Base):
     )
     data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    # Identity of the human or system component responsible for this entry.
     actor: Mapped[str] = mapped_column(String, default="system", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

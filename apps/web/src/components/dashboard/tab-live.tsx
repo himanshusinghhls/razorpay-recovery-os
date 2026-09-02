@@ -70,12 +70,9 @@ const FAILURE_REASONS = [
 
 const QUICK_AMOUNTS = [499, 2499, 14999, 89999];
 
-// Bounds on the status poll. The previous implementation looped forever, so a
-// job that died left the browser polling for the rest of the session.
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90_000;
 
-/** Short pause so consecutive stage changes render as distinct steps. */
 const beat = (ms = 420) => new Promise((r) => setTimeout(r, ms));
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -119,10 +116,6 @@ export function LiveRecoveryTab({
   const amount = Math.max(0, parseInt(amountInput, 10) || 0);
   const cancelled = useRef(false);
 
-  // Must be reset on mount, not only set on unmount: React StrictMode runs
-  // effects mount → unmount → mount in development, so a cleanup-only version
-  // latches this to true on the throwaway first pass and every later poll
-  // aborts immediately with "cancelled".
   useEffect(() => {
     cancelled.current = false;
     return () => {
@@ -144,7 +137,6 @@ export function LiveRecoveryTab({
     setRunning(true);
   };
 
-  /** Poll a queued job until it leaves the processing state, or we give up. */
   const pollUntilDone = useCallback(
     async (jobId: string): Promise<RecoveryResult> => {
       const deadline = Date.now() + POLL_TIMEOUT_MS;
@@ -161,8 +153,6 @@ export function LiveRecoveryTab({
             return res.data;
           }
         } catch (err) {
-          // A 404 means the job record expired or never landed; anything else
-          // is worth one more attempt before the deadline.
           if (
             typeof err === "object" &&
             err !== null &&
@@ -179,13 +169,6 @@ export function LiveRecoveryTab({
     [],
   );
 
-  /**
-   * Walk the rail through the stages the run actually passed.
-   *
-   * Deliberately paced: setting several stages in one synchronous pass gets
-   * batched by React, so the rail would snap from "diagnose" to "result" and
-   * the policy/execute steps would never be seen.
-   */
   const renderOutcome = useCallback(
     async (data: RecoveryResult) => {
       setStage("policy");
@@ -239,10 +222,9 @@ export function LiveRecoveryTab({
       push(
         "done",
         "Recovery initiated",
-        `${titleCase(data.action_type)}${
-          data.pipeline_latency_ms
-            ? ` · ${Math.round(data.pipeline_latency_ms)}ms end to end`
-            : ""
+        `${titleCase(data.action_type)}${data.pipeline_latency_ms
+          ? ` · ${Math.round(data.pipeline_latency_ms)}ms end to end`
+          : ""
         }`,
         "success",
         Sparkles,
@@ -363,7 +345,7 @@ export function LiveRecoveryTab({
               amount: amountPaise,
             });
           } catch {
-            // Logging the happy path is best effort.
+            //
           }
           onChanged();
         },
@@ -396,7 +378,7 @@ export function LiveRecoveryTab({
         push("failed", "Payment failed", `Reason: ${reason}`, "danger", XCircle);
         void runRecovery(
           resp?.error?.metadata?.payment_id ||
-            `pay_f_${Math.random().toString(36).slice(2, 10)}`,
+          `pay_f_${Math.random().toString(36).slice(2, 10)}`,
           "insufficient_funds",
           amountPaise,
         );

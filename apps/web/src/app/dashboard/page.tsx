@@ -67,13 +67,10 @@ function Dashboard() {
       const res = await api.get<Analytics>("/analytics/summary");
       setAnalytics(res.data);
     } catch {
-      // Transient failures are expected while a token refreshes; the next
-      // poll picks it up rather than tearing down the view.
+      // 
     }
   }, []);
 
-  // Poll only while the tab is visible. A backgrounded dashboard used to keep
-  // hitting the API every 8s indefinitely.
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
 

@@ -5,10 +5,6 @@ import { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 
-/* ---------------------------------------------------------------------------
-   Motion constants — shared so timing feels consistent across the app.
---------------------------------------------------------------------------- */
-
 export const spring = { type: "spring" as const, stiffness: 320, damping: 30 };
 export const softSpring = { type: "spring" as const, stiffness: 180, damping: 24 };
 export const ease = { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const };
@@ -45,10 +41,6 @@ const TONE_BG: Record<Tone, string> = {
 
 export const toneText = (t: Tone) => TONE_TEXT[t];
 export const toneChip = (t: Tone) => clsx(TONE_BG[t], TONE_TEXT[t]);
-
-/* ---------------------------------------------------------------------------
-   Building blocks
---------------------------------------------------------------------------- */
 
 export function Badge({
   tone = "neutral",
@@ -163,13 +155,6 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
-/**
- * Glass panel that tilts a few degrees toward the cursor.
- *
- * The rotation is driven by springs rather than raw pointer values so it
- * settles smoothly instead of snapping, and it is disabled entirely on touch
- * devices where there is no hover to respond to.
- */
 export function TiltCard({
   children,
   className,
@@ -207,10 +192,6 @@ export function TiltCard({
   );
 }
 
-/**
- * Number that springs to its new value instead of jumping.
- * Falls back to a plain render until mounted so SSR output stays stable.
- */
 export function AnimatedNumber({
   value,
   format,

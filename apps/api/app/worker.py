@@ -296,8 +296,6 @@ async def process_recovery_task(
             )
 
         except Exception:
-            # Leave no partial transaction on the pooled connection before arq
-            # retries this job.
             await session.rollback()
             logger.exception(
                 "recovery failed payment=%s merchant=%s", payload.payment_id, merchant_id
@@ -333,11 +331,8 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
 
-    # Honour REDIS_URL instead of a hardcoded localhost DSN.
     redis_settings = RedisSettings.from_dsn(app_settings.redis_url)
 
-    # A recovery that keeps failing must not be retried forever; after this it
-    # lands in the dead-letter state and stays visible rather than looping.
     max_tries = 3
     job_timeout = 120
     max_jobs = 20

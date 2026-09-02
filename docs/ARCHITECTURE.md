@@ -23,25 +23,27 @@ flowchart TB
 
     subgraph Safety Boundary
       E --> F{"Policy Engine"}
-      F -->|"Pass"| G["Recovery Execution"]
-      F -->|"Block: Suspicious/High-Value"| H["Human Review Queue"]
+      F -->|"Pass"| G["Recovery Execution (ARQ Worker)"]
+      F -->|"Block: Suspicious/High-Value"| H["Human Review Queue (Analyst Role)"]
       F -->|"Block: Limits Exceeded"| I["Stopping Rule (Halt)"]
     end
 
     subgraph Execution & Audit
       G --> J["Razorpay Retry / Payment Link"]
-      J --> K[("PostgreSQL Audit Log")]
+      J --> K[("PostgreSQL (Multi-Tenant)")]
       H --> K
       I --> K
     end
 
-    subgraph Security & Environment
-      L["Environment Variables (.env)"] -.->|Injected via Pydantic Field| M["Settings (FastAPI)"]
+    subgraph Security & Auth
+      L["JWT + Refresh Cookie"] -.->|RBAC Verification| M["FastAPI Route"]
+      M -.->|Merchant Isolation| K
     end
 
     style A fill:#1e3a5f,stroke:#3b82f6,color:#fff
     style C fill:#4c1d95,stroke:#8b5cf6,color:#fff
     style F fill:#831843,stroke:#f43f5e,color:#fff
+    style G fill:#065f46,stroke:#10b981,color:#fff
     style J fill:#14532d,stroke:#22c55e,color:#fff
     style K fill:#1e1b4b,stroke:#a78bfa,color:#fff
 ```
@@ -56,11 +58,14 @@ RecoveryOS manages state across three distinct layers:
 | **Decision State** | What the AI and Policy Engine decided to do | `RecoveryDecision`, `PolicyDecision`, Pending Reviews |
 | **Audit/Execution State** | What was actually executed | `AuditRecord`, `ExecutionRecord` |
 
-## Security & Graceful Degradation
+## Security, Tenancy & Graceful Degradation
 
-- **Adversarial Resiliency:** A dedicated testing suite (`/safety/adversarial`) attacks the API with prompt injections, negative amounts, and fake fraud events. The LLM prompt itself uses strict structural boundaries (`<instructions>`, `<input>`) as an additional layer of defense against prompt injection, alongside the deterministic Policy Engine.
-- **Graceful Fallback:** If the Gemini API hits a rate limit (429) or fails, the application doesn't crash. It falls back to a deterministic taxonomy configuration to safely score and route failures offline.
-- **Environment Isolation:** Secrets and keys are not hardcoded. Pydantic `Field(...)` requirements strictly enforce `.env` configuration prior to the backend booting.
+- **Multi-Tenant by Design:** Every payment, execution, audit entry, and review belongs to exactly one `merchant_id`. Isolation is enforced by bounding repositories to a merchant at construction (e.g., `PostgresAuditRepository(session, merchant_id)`).
+- **Authentication & RBAC:** Users authenticate via Argon2id hashed passwords to receive short-lived JWTs and rotating `httpOnly` refresh tokens. Routes are secured with strictly enforced roles (`Viewer`, `Analyst`, `Admin`).
+- **Asynchronous Execution:** Heavy AI operations and Razorpay network calls run off the request path using **ARQ Redis Background Workers**. This prevents event loop blocking and ensures enterprise-grade resilience.
+- **Distributed Rate Limiting:** Redis-backed sliding windows provide per-IP and per-user abuse protection. It is designed to fail open if Redis goes down, prioritizing availability.
+- **Adversarial Resiliency:** A dedicated testing suite attacks the API with prompt injections, negative amounts, and fake fraud events. The LLM prompt itself uses strict structural boundaries.
+- **Graceful Fallback:** If the Gemini API hits a rate limit (429) or fails, circuit breakers (Tenacity) handle backoffs, and the application gracefully falls back to a deterministic YAML taxonomy.
 
 ## Package Structure
 
@@ -71,7 +76,7 @@ RecoveryOS manages state across three distinct layers:
 | `domain/` | Core business logic, pure Python models. Contains the Policy Engine and Taxonomy. |
 | `integrations/` | Adapters for external services (Razorpay, Google GenAI). |
 | `docs/` | Architecture, Methodology, and Compliance documentation. |
-| `tests/` | Comprehensive test suite containing Unit, Integration, Adversarial, and 12 full E2E tests using mocked infrastructure. |
+| `tests/` | Comprehensive test suite containing Unit, Integration, Adversarial, and E2E tests. |
 
 ## Closed Set of Action Verbs
 

@@ -173,7 +173,6 @@ choose your own.
 - [Methodology & 50k Benchmark](docs/METHODOLOGY.md)
 - [Compliance, Gates & Stops](docs/COMPLIANCE.md)
 - [Failure Taxonomy & Action Verbs](domain/policy/taxonomy.yaml)
-- [Demo Pitch Script](docs/DEMO.md)
 
 ---
 

@@ -17,8 +17,7 @@ RUN python -m compileall -q \
     apps/api/app \
     application \
     domain \
-    integrations \
-    infrastructure
+    integrations
 
 EXPOSE 8000
 

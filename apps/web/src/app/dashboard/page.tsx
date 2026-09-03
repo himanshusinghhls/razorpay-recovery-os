@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   BarChart3,
   BookOpen,
   Eye,
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+
 import { RequireAuth } from "@/components/require-auth";
 import { DashboardShell, TabDef } from "@/components/dashboard/shell";
 import { LiveRecoveryTab } from "@/components/dashboard/tab-live";
@@ -58,7 +57,6 @@ export default function DashboardPage() {
 }
 
 function Dashboard() {
-  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("live");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
 

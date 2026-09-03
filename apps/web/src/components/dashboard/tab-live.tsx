@@ -50,7 +50,6 @@ import {
   Tone,
   fadeUp,
   toneChip,
-  toneText,
 } from "@/components/ui";
 import {
   PipelineCard,

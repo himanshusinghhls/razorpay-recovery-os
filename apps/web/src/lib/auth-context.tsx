@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const scheduleRefresh = useCallback(
-    (expiresIn: number) => {
+    function doSchedule(expiresIn: number) {
       clearTimer();
       const leadTime = Math.max(expiresIn - 60, 30) * 1000;
       refreshTimer.current = setTimeout(async () => {
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const res = await api.post<SessionResponse>("/auth/refresh");
           setAccessToken(res.data.access_token);
           setUser(res.data.user);
-          scheduleRefresh(res.data.expires_in);
+          doSchedule(res.data.expires_in);
         } catch {
           setAccessToken(null);
           setUser(null);

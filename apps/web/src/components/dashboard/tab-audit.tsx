@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Eye, FileSearch, Search } from "lucide-react";
 
@@ -43,11 +43,26 @@ export function AuditTab() {
   const [trail, setTrail] = useState<TrailEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [recentAudits, setRecentAudits] = useState<string[]>([]);
 
-  const search = async () => {
-    const id = paymentId.trim();
+  useEffect(() => {
+    let mounted = true;
+    api.get<{ entries: { payment_id: string }[] }>('/audit/')
+      .then((res) => {
+        if (!mounted) return;
+        const uniqueIds = Array.from(new Set(res.data.entries.map(e => e.payment_id)));
+        setRecentAudits(uniqueIds.slice(0, 5));
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const searchForId = async (idToSearch: string) => {
+    const id = idToSearch.trim();
     if (!id) return;
 
+    setPaymentId(id);
     setLoading(true);
     setError(null);
     setTrail(null);
@@ -60,6 +75,8 @@ export function AuditTab() {
       setLoading(false);
     }
   };
+
+  const search = () => searchForId(paymentId);
 
   return (
     <SectionCard
@@ -96,6 +113,23 @@ export function AuditTab() {
             title="Trace a payment"
             description="Enter a payment id to replay every step the system took."
           />
+          {recentAudits.length > 0 && (
+            <div className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+              <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-3">Recent Transactions</h4>
+              <div className="flex flex-col gap-2">
+                {recentAudits.map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => searchForId(id)}
+                    className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3 text-left transition hover:border-[var(--brand)] hover:bg-[var(--surface-2)]"
+                  >
+                    <Mono className="text-sm text-[var(--text-primary)]">{id}</Mono>
+                    <Search className="h-4 w-4 text-[var(--text-muted)] transition group-hover:text-[var(--brand)]" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -124,7 +158,7 @@ export function AuditTab() {
                       </span>
                     </div>
                     {Object.keys(e.data ?? {}).length > 0 && (
-                      <pre className="mt-1.5 max-w-full overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[rgba(5,8,15,0.5)] p-2.5 font-mono text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                      <pre className="mt-1.5 max-w-full overflow-x-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5 font-mono text-[10px] leading-relaxed text-[var(--text-secondary)]">
                         {JSON.stringify(e.data, null, 2)}
                       </pre>
                     )}

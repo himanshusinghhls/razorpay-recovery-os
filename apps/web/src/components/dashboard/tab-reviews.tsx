@@ -23,7 +23,6 @@ import {
   SectionCard,
   SkeletonRows,
   Tone,
-  toneChip,
 } from "@/components/ui";
 
 interface Review {
@@ -69,7 +68,7 @@ export function ReviewsTab({ onChanged }: { onChanged: () => void }) {
   }, [filter]);
 
   useEffect(() => {
-    setReviews(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

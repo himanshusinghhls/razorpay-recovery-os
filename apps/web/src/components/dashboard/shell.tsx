@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { LucideIcon, LogOut, Sparkles, Zap, CreditCard } from "lucide-react";
+import { LucideIcon, LogOut } from "lucide-react";
 import { useState } from "react";
 import clsx from "clsx";
 

@@ -62,7 +62,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     this API can include payment identifiers and credentials.
     """
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "detail": [
                 {"field": ".".join(str(p) for p in e["loc"]), "message": e["msg"]}

@@ -53,6 +53,14 @@ jobs:
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql://recoveryos:recoveryos@localhost:5432/recoveryos
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: ci-test-secret-key-min-32-characters-long
+          API_KEY: ci-test-api-key-placeholder
+          RAZORPAY_KEY_ID: rzp_test_ci_placeholder
+          RAZORPAY_KEY_SECRET: ci_placeholder_secret
+          RAZORPAY_WEBHOOK_SECRET: ci_webhook_secret
+          GEMINI_API_KEY: ci_gemini_placeholder
+          APP_ENV: test
         run: PYTHONPATH=. ./apps/api/.venv/bin/python scripts/init_db.py
 
       - name: Run tests

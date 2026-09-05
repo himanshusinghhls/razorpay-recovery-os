@@ -50,6 +50,11 @@ jobs:
           ./apps/api/.venv/bin/pip install --upgrade pip
           ./apps/api/.venv/bin/pip install -r apps/api/requirements.txt
 
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://recoveryos:recoveryos@localhost:5432/recoveryos
+        run: PYTHONPATH=. ./apps/api/.venv/bin/python scripts/init_db.py
+
       - name: Run tests
         env:
           DATABASE_URL: postgresql://recoveryos:recoveryos@localhost:5432/recoveryos

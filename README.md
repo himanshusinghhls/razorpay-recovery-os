@@ -1,8 +1,28 @@
 # RecoveryOS ⚡
 
+[![CI](https://github.com/himanshusinghhls/razorpay-recovery-os/actions/workflows/ci.yml/badge.svg)](https://github.com/himanshusinghhls/razorpay-recovery-os/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-107%20passing-brightgreen)]()
+
 **Autonomous AI Revenue Recovery Agent** — Razorpay AI Buildathon · Track 03
 
 RecoveryOS detects revenue at risk, uses an AI analyst (Gemini 2.5 Flash + Structured Outputs) to diagnose root causes, enforces deterministic safety guardrails, and executes bounded recovery actions via Razorpay's real API. Every step is audited. Every unsafe action is blocked. Every tenant is isolated.
+
+---
+
+## Screenshots
+
+| Dashboard Overview | Live Recovery Pipeline |
+|---|---|
+| ![Dashboard](docs/screenshots/01-dashboard-overview.png) | ![Pipeline](docs/screenshots/02-live-recovery-pipeline.png) |
+
+| Audit Trail | Escalation Queue |
+|---|---|
+| ![Audit](docs/screenshots/03-audit-trail.png) | ![Escalations](docs/screenshots/04-escalation-queue.png) |
+
+| Adversarial Security Wall | Payment Checkout |
+|---|---|
+| ![Safety](docs/screenshots/05-adversarial-wall.png) | ![Checkout](docs/screenshots/06-payment-checkout.png) |
 
 ---
 

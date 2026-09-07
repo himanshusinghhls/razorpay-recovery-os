@@ -104,6 +104,7 @@ services:
     command:
       - "http"
       - "http://web:3000"
+      - "--log=stdout"
 
 volumes:
   postgres_data:

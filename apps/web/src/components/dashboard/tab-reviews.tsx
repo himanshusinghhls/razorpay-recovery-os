@@ -57,7 +57,7 @@ export function ReviewsTab({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<{ reviews: Review[] }>("/reviews/", {
+      const res = await api.get<{ reviews: Review[] }>("/reviews", {
         params: { status: filter },
       });
       setReviews(res.data.reviews);

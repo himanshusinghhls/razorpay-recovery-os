@@ -48,7 +48,7 @@ export function AuditTab() {
 
   useEffect(() => {
     let mounted = true;
-    api.get<{ entries: { payment_id: string }[] }>('/audit')
+    api.get<{ entries: { payment_id: string }[] }>('/audit/')
       .then((res) => {
         if (!mounted) return;
         const uniqueIds = Array.from(new Set(res.data.entries.map(e => e.payment_id)));

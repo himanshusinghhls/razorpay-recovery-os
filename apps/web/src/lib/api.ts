@@ -4,7 +4,9 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-export const API_BASE = `/api/v1`;
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1`
+  : `/api/v1`;
 
 let accessToken: string | null = null;
 let onSessionLost: (() => void) | null = null;

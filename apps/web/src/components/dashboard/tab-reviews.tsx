@@ -68,7 +68,8 @@ export function ReviewsTab({ onChanged }: { onChanged: () => void }) {
   }, [filter]);
 
   useEffect(() => {
-    load();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
   }, [load]);
 
   const resolve = async (id: string, action: "approve" | "reject") => {

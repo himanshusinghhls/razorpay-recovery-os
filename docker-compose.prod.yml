@@ -91,9 +91,17 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - api
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: recovery-os-tunnel
+    command: tunnel --url http://web:3000
+    restart: unless-stopped
+    depends_on:
+      - web
 
 volumes:
   postgres_data:

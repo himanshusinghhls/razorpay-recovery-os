@@ -95,13 +95,15 @@ services:
     depends_on:
       - api
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
+  ngrok:
+    image: ngrok/ngrok:latest
     container_name: recovery-os-tunnel
-    command: tunnel --url http://web:3000
     restart: unless-stopped
-    depends_on:
-      - web
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      - "http://web:3000"
 
 volumes:
   postgres_data:

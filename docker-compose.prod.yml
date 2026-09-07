@@ -43,7 +43,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-recovery}:${POSTGRES_PASSWORD:-recovery_password}@postgres:5432/${POSTGRES_DB:-recovery_os}
       - REDIS_URL=redis://redis:6379/0
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-production}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
       - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
@@ -68,7 +68,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-recovery}:${POSTGRES_PASSWORD:-recovery_password}@postgres:5432/${POSTGRES_DB:-recovery_os}
       - REDIS_URL=redis://redis:6379/0
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV:-production}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
       - API_KEY=${API_KEY}

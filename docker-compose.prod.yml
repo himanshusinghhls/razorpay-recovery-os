@@ -85,26 +85,16 @@ services:
       context: apps/web
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-""}
     container_name: recovery-os-web
     restart: unless-stopped
     ports:
+      - "80:3000"
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-""}
     depends_on:
       - api
-
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: recovery-os-tunnel
-    restart: unless-stopped
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command:
-      - "http"
-      - "http://web:3000"
-      - "--log=stdout"
 
 volumes:
   postgres_data:
